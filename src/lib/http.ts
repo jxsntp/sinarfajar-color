@@ -37,14 +37,16 @@ export async function endpoint<T>(
     });
   } catch (error) {
     let failure = new HttpError(500, "internal_error");
+    let databaseCode: string | undefined;
     if (error instanceof HttpError) failure = error;
     if (error instanceof z.ZodError || error instanceof SyntaxError)
       failure = new HttpError(400, "invalid_request");
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    )
-      failure = new HttpError(409, "conflict");
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      databaseCode = error.code;
+      if (databaseCode === "P2002") failure = new HttpError(409, "conflict");
+    } else if (error instanceof Prisma.PrismaClientInitializationError) {
+      databaseCode = error.errorCode;
+    }
     measure(failure.status);
     console.warn(
       JSON.stringify({
@@ -52,6 +54,7 @@ export async function endpoint<T>(
         operation,
         status: failure.status,
         code: failure.code,
+        databaseCode: failure.status >= 500 ? databaseCode : undefined,
       }),
     );
     return Response.json(

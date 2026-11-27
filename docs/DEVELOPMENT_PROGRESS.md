@@ -180,3 +180,7 @@ Windows was holding the generated Prisma engine open while the kiosk used the da
 Hosted builds now report all missing or invalid environment settings before compilation. The runtime uses the same validation and readiness checks that the kiosk organization and required catalog tables can be queried. A deployment can explicitly disable the inventory age cutoff with `INVENTORY_MAX_AGE_MINUTES=off`.
 
 All 10 approved migrations applied to the initially empty Supabase application schema. The configured Sinar Fajar organization was then created and verified. The completed hosted env file passed preflight. A local production-mode server using the hosted database returned HTTP 200 for readiness, the kiosk, and the staff login page. Lint, 25 unit tests, 14 targeted integration tests, and the full local build passed. Vercel settings and deployment remain pending.
+
+### Kiosk session transaction deadline
+
+A live session-start request with a diagnostic device returned HTTP 500 after 6.6 seconds and committed no session. The diagnostic device was revoked. Session startup now allows up to 15 seconds in its transaction for the device lock, experiment assignment, and event write. Server logs include Prisma error codes when database failures cause a 500. The integration regression holds the device lock past Prisma's five-second default and verifies that the new session persists.
