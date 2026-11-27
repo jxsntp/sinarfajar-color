@@ -56,6 +56,8 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
+On Windows, the app can keep running while `npm run build` regenerates Prisma Client. A Next.js process started before the Windows engine fix needs one restart to release the generated library.
+
 The integration and browser suites enforce the local Compose database name, host and ports and create uniquely named fixtures. Browser tests start the production build on port 3308. An installed Edge browser can be used with `PLAYWRIGHT_CHANNEL=msedge`. Unit tests require no running database.
 
 ## Catalog and discovery configuration
