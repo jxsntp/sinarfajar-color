@@ -1,0 +1,63 @@
+{
+  "name": "inaura-retail",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "predev": "node scripts/local-vision-assets.mjs",
+    "prebuild": "node scripts/local-vision-assets.mjs",
+    "dev": "next dev",
+    "build": "prisma generate && next build --webpack",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "prisma generate && next typegen && tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "test:integration": "vitest run --config vitest.integration.ts",
+    "test:e2e": "playwright test",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts"
+  },
+  "dependencies": {
+    "@fontsource/dm-sans": "^5",
+    "@fontsource/instrument-serif": "^5",
+    "@mediapipe/tasks-vision": "0.10.32",
+    "@prisma/client": "6.19.x",
+    "@supabase/supabase-js": "^2.90.0",
+    "@zxing/browser": "0.1.5",
+    "@zxing/library": "0.21.3",
+    "clsx": "^2",
+    "csv-parse": "7.0.3",
+    "next": "^16.2.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "recharts": "^3.11.1",
+    "tailwind-merge": "^2",
+    "zod": "^4"
+  },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.1",
+      "effect": "3.22.1"
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.0",
+    "@types/node": "^22",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10",
+    "eslint": "^9",
+    "eslint-config-next": "^16.2.0",
+    "postcss": "^8",
+    "prisma": "6.19.x",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.6"
+  }
+}

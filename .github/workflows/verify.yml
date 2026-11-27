@@ -1,0 +1,39 @@
+name: Verify Inaura
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Start isolated PostgreSQL, Auth and Storage
+        run: |
+          cp .env.example .env
+          node scripts/local-storage.mjs
+          docker compose up -d
+          curl --fail --retry 20 --retry-all-errors --retry-delay 2 http://127.0.0.1:25421/auth/v1/health
+          node scripts/local-photo-bucket.mjs
+      - run: npm run db:migrate
+      - run: npm run db:seed
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

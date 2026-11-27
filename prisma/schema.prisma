@@ -1,0 +1,887 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum DeviceKind {
+  KIOSK
+  POS
+}
+
+enum StaffRole {
+  ORG_ADMIN
+  STORE_MANAGER
+  SALES_ASSOCIATE
+  MARKETING_ANALYST
+}
+
+enum ColorSource {
+  MANUAL
+  AUTOMATIC
+}
+
+enum Channel {
+  KIOSK
+  MOBILE
+  STAFF
+  POS
+}
+
+model Organization {
+  catalogVersion              Int                    @default(1)
+  rankingSettings             Json                   @default("{}")
+  manufacturers               Manufacturer[]
+  catalogAudits               CatalogAudit[]
+  id                          String                 @id @default(uuid()) @db.Uuid
+  slug                        String                 @unique
+  name                        String
+  locale                      String                 @default("id-ID")
+  accent                      String                 @default("#623e50")
+  createdAt                   DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt                   DateTime               @updatedAt @db.Timestamptz(3)
+  storeRecords                Store[]
+  deviceRecords               Device[]
+  membershipRecords           Membership[]
+  brandRecords                Brand[]
+  productRecords              Product[]
+  productImageRecords         ProductImage[]
+  inventoryRecords            Inventory[]
+  customerSessionRecords      CustomerSession[]
+  customerPreferenceRecords   CustomerPreference[]
+  colorAnalysisRecords        ColorAnalysis[]
+  mobileReportTokenRecords    MobileReportToken[]
+  consentRecords              Consent[]
+  aIModelConfigRecords        AIModelConfig[]
+  promptVersionRecords        PromptVersion[]
+  recommendationRunRecords    RecommendationRun[]
+  recommendationItemRecords   RecommendationItem[]
+  experimentRecords           Experiment[]
+  experimentAssignmentRecords ExperimentAssignment[]
+  interactionEventRecords     InteractionEvent[]
+  productInquiryRecords       ProductInquiry[]
+  tryOnRecords                TryOn[]
+  transactionRecords          Transaction[]
+  transactionItemRecords      TransactionItem[]
+  feedbackRecords             Feedback[]
+}
+
+model Manufacturer {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  name           String
+  products       Product[]
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, name])
+}
+
+model CatalogAudit {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  actorId        String       @db.Uuid
+  actor          UserProfile  @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  subject        String
+  action         String
+  before         Json?
+  after          Json?
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([organizationId, subject, createdAt])
+}
+
+model ActivationRequest {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  sessionId      String            @db.Uuid
+  key            String            @db.Uuid
+  preferenceHash String
+  runId          String            @db.Uuid
+  run            RecommendationRun @relation(fields: [organizationId, sessionId, runId], references: [organizationId, sessionId, id], onDelete: Restrict)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@unique([organizationId, sessionId, key])
+}
+
+model InferenceAttempt {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  runId          String?           @db.Uuid
+  run            RecommendationRun? @relation(fields: [organizationId, runId], references: [organizationId, id], onDelete: Restrict)
+  reservedUsd    Decimal           @db.Decimal(12, 8)
+  costUsd        Decimal?          @db.Decimal(12, 8)
+  inputTokens    Int?
+  outputTokens   Int?
+  outcome        String            @default("reserved")
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@index([organizationId, createdAt])
+  @@index([runId])
+}
+
+model UserProfile {
+  assignedInquiries ProductInquiry[]
+  assignedTryOns    TryOn[]
+  catalogAudits     CatalogAudit[]
+  id                String           @id @default(uuid()) @db.Uuid
+  platformAdmin     Boolean          @default(false)
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+  memberships       Membership[]
+}
+
+model Store {
+  analyticsCampaigns AnalyticsCampaign[]
+  analyticsDailyRows AnalyticsDaily[]
+  financialPeriods   FinancialPeriod[]
+  photoCatalog       PhotoCatalogItem[]
+  evaluationCases    EvaluationCase[]
+  operationalAlerts  OperationalAlert[]
+  sales              Transaction[]
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @db.Uuid
+  code               String
+  name               String
+  timeZone           String              @default("Asia/Jakarta")
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  devices            Device[]
+  memberships        Membership[]
+  stock              Inventory[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, code])
+}
+
+model Device {
+  expiresAt      DateTime          @default(dbgenerated("(now() + '180 days'::interval)")) @db.Timestamptz(3)
+  lastSeenAt     DateTime?         @db.Timestamptz(3)
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  storeId        String            @db.Uuid
+  label          String
+  kind           DeviceKind        @default(KIOSK)
+  keyHash        String            @unique @db.Char(64)
+  revokedAt      DateTime?         @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  store          Store             @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  sessions       CustomerSession[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, storeId, id])
+  @@index([organizationId, storeId])
+}
+
+model Membership {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  userId         String       @db.Uuid
+  storeId        String?      @db.Uuid
+  role           StaffRole
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  user           UserProfile  @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  store          Store?       @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@unique([userId, organizationId])
+}
+
+model Brand {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  name           String
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  products       Product[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, name])
+}
+
+model Product {
+  barcode             String?
+  manufacturerId      String?              @db.Uuid
+  manufacturer        Manufacturer?        @relation(fields: [organizationId, manufacturerId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  weightGrams         Decimal?             @db.Decimal(10, 3)
+  gemstones           String?
+  styleTags           String[]             @default([])
+  occasionTags        String[]             @default([])
+  visibleColors       Json                 @default("[]")
+  id                  String               @id @default(uuid()) @db.Uuid
+  organizationId      String               @db.Uuid
+  brandId             String               @db.Uuid
+  sku                 String
+  name                String
+  category            String
+  goldColor           String
+  purity              String
+  archived            Boolean              @default(false)
+  createdAt           DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  brand               Brand                @relation(fields: [organizationId, brandId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  images              ProductImage[]
+  stock               Inventory[]
+  recommendationItems RecommendationItem[]
+  events              InteractionEvent[]
+  inquiries           ProductInquiry[]
+  tryOns              TryOn[]
+  transactionItems    TransactionItem[]
+
+  @@unique([organizationId, barcode])
+  @@unique([organizationId, id])
+  @@unique([organizationId, sku])
+  @@index([organizationId, brandId])
+}
+
+model ProductImage {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  productId      String       @db.Uuid
+  storagePath    String
+  alt            String
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  product        Product      @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, productId, storagePath])
+}
+
+model PhotoCatalogItem {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @db.Uuid
+  storeId           String    @db.Uuid
+  storagePath       String
+  label             String
+  state             String    @default("DRAFT")
+  category          String?
+  tags              Json?
+  proposal          Json?
+  proposalModel     String?
+  analysisStartedAt DateTime? @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+  store             Store     @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, storagePath])
+  @@index([organizationId, storeId, state, category])
+}
+
+model Inventory {
+  verifiedAt      DateTime?    @db.Timestamptz(3)
+  posSyncedAt     DateTime?    @db.Timestamptz(3)
+  displayLocation String?
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  storeId         String       @db.Uuid
+  productId       String       @db.Uuid
+  onHand          Int
+  price           Decimal      @db.Decimal(16, 2)
+  currency        String       @default("IDR") @db.Char(3)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  store           Store        @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  product         Product      @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, storeId, productId])
+}
+
+model CustomerSession {
+  campaignId                  String?                @db.Uuid
+  campaign                    AnalyticsCampaign?     @relation(fields: [organizationId, storeId, campaignId], references: [organizationId, storeId, id], onDelete: Restrict)
+  assisted                    Boolean                @default(false)
+  checkoutHash                String?                @unique @db.Char(64)
+  checkoutExpiresAt           DateTime?              @db.Timestamptz(3)
+  id                          String                 @id @default(uuid()) @db.Uuid
+  organizationId              String                 @db.Uuid
+  storeId                     String                 @db.Uuid
+  deviceId                    String                 @db.Uuid
+  kioskKeyHash                String?                @unique @db.Char(64)
+  expiresAt                   DateTime               @db.Timestamptz(3)
+  endedAt                     DateTime?              @db.Timestamptz(3)
+  createdAt                   DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt                   DateTime               @updatedAt @db.Timestamptz(3)
+  organization                Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  device                      Device                 @relation(fields: [organizationId, storeId, deviceId], references: [organizationId, storeId, id], onDelete: Restrict, onUpdate: NoAction)
+  customerPreferenceRecords   CustomerPreference[]
+  registration                CustomerRegistration?
+  colorAnalysisRecords        ColorAnalysis[]
+  mobileReportTokenRecords    MobileReportToken[]
+  consentRecords              Consent[]
+  recommendationRunRecords    RecommendationRun[]
+  experimentAssignmentRecords ExperimentAssignment[]
+  interactionEventRecords     InteractionEvent[]
+  productInquiryRecords       ProductInquiry[]
+  tryOnRecords                TryOn[]
+  storeTransactions           Transaction[]
+  feedbackRecords             Feedback[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, storeId, id])
+  @@index([createdAt, id])
+  @@index([organizationId, storeId, createdAt])
+  @@index([organizationId, deviceId])
+}
+
+model CustomerRegistration {
+  organizationId String          @db.Uuid
+  sessionId      String          @db.Uuid
+  name           String
+  email          String
+  phone          String
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  session        CustomerSession @relation(fields: [organizationId, sessionId], references: [organizationId, id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([organizationId, sessionId])
+}
+
+model CustomerPreference {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  sessionId      String          @db.Uuid
+  style          String?
+  occasion       String?
+  category       String?
+  maxBudget      Decimal?        @db.Decimal(16, 2)
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  session        CustomerSession @relation(fields: [organizationId, sessionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, sessionId])
+  @@index([organizationId, sessionId])
+}
+
+model ColorAnalysis {
+  cameraConsentId String?         @db.Uuid
+  cameraConsent   Consent?        @relation(fields: [organizationId, sessionId, cameraConsentId], references: [organizationId, sessionId, id], onDelete: Restrict, map: "ColorAnalysis_camera_consent_fkey")
+  id              String          @id @default(uuid()) @db.Uuid
+  organizationId  String          @db.Uuid
+  sessionId       String          @db.Uuid
+  profile         String?
+  palette         String[]
+  toneGroups      String[]        @default([])
+  paletteVersion  String?
+  calibrationVersion String?
+  paletteSnapshot Json?
+  uncertainty     String?
+  methodVersion   String
+  quality         String
+  uncertain       Boolean
+  source          ColorSource
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @db.Timestamptz(3)
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  session         CustomerSession @relation(fields: [organizationId, sessionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, sessionId])
+  @@index([organizationId, sessionId])
+}
+
+model MobileReportToken {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  sessionId      String          @db.Uuid
+  tokenHash      String          @unique @db.Char(64)
+  expiresAt      DateTime        @db.Timestamptz(3)
+  revokedAt      DateTime?       @db.Timestamptz(3)
+  handedOffAt    DateTime?       @db.Timestamptz(3)
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  session        CustomerSession @relation(fields: [organizationId, sessionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, sessionId])
+  @@index([organizationId, sessionId])
+}
+
+model Consent {
+  analyses       ColorAnalysis[]
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  sessionId      String          @db.Uuid
+  purpose        String
+  version        String
+  granted        Boolean
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  session        CustomerSession @relation(fields: [organizationId, sessionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, sessionId, id], map: "Consent_organization_session_id_key")
+  @@unique([organizationId, id])
+  @@index([organizationId, sessionId])
+}
+
+model AIModelConfig {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  provider       String
+  model          String
+  enabled        Boolean             @default(false)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  runs           RecommendationRun[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, provider, model])
+}
+
+model PromptVersion {
+  evaluations    EvaluationResult[]
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  name           String
+  version        Int
+  template       String
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  runs           RecommendationRun[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, name, version])
+}
+
+model RecommendationRun {
+  fingerprint      String?
+  status           String               @default("COMPLETE")
+  preferences      Json                 @default("{}")
+  colorContext     Json?
+  catalogVersion   Int                  @default(0)
+  candidateSkus    String[]             @default([])
+  photoCandidateIds String[]            @default([]) @db.Uuid
+  photoPicks        Json                @default("[]")
+  assignedStrategy String               @default("rules")
+  variant          String?
+  modelIdentifier  String?
+  providerName     String?
+  promptLabel      String               @default("legacy")
+  returnedRanking  Json                 @default("[]")
+  schemaValid      Boolean?
+  failureCategory  String?
+  latencyMs        Int?
+  inputTokens      Int                  @default(0)
+  outputTokens     Int                  @default(0)
+  inferenceCost    Decimal?             @db.Decimal(12, 8)
+  requests         ActivationRequest[]
+  attempts         InferenceAttempt[]
+  id               String               @id @default(uuid()) @db.Uuid
+  organizationId   String               @db.Uuid
+  sessionId        String               @db.Uuid
+  strategy         String
+  modelConfigId    String?              @db.Uuid
+  promptVersionId  String?              @db.Uuid
+  fallback         Boolean              @default(false)
+  createdAt        DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @db.Timestamptz(3)
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  session          CustomerSession      @relation(fields: [organizationId, sessionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  modelConfig      AIModelConfig?       @relation(fields: [organizationId, modelConfigId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  promptVersion    PromptVersion?       @relation(fields: [organizationId, promptVersionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  items            RecommendationItem[]
+  events           InteractionEvent[]
+
+  @@unique([organizationId, sessionId, fingerprint])
+  @@unique([organizationId, id])
+  @@unique([organizationId, sessionId, id])
+  @@index([organizationId, sessionId])
+}
+
+model RecommendationItem {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  runId          String            @db.Uuid
+  productId      String            @db.Uuid
+  rank           Int
+  reason         String
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  run            RecommendationRun @relation(fields: [organizationId, runId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  product        Product           @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, runId, rank])
+  @@unique([organizationId, runId, productId])
+}
+
+model Experiment {
+  state           String                 @default("LEGACY")
+  primaryOutcome  String?
+  minimumPerArm   Int?
+  observationDays Int?
+  openedAt        DateTime?              @db.Timestamptz(3)
+  closedAt        DateTime?              @db.Timestamptz(3)
+  protocol        String?
+  rankingSnapshot Json?
+  id              String                 @id @default(uuid()) @db.Uuid
+  organizationId  String                 @db.Uuid
+  name            String
+  version         Int
+  createdAt       DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime               @updatedAt @db.Timestamptz(3)
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  assignments     ExperimentAssignment[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, name, version])
+}
+
+model ExperimentAssignment {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  sessionId      String          @db.Uuid
+  experimentId   String          @db.Uuid
+  variant        String
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  session        CustomerSession @relation(fields: [organizationId, sessionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  experiment     Experiment      @relation(fields: [organizationId, experimentId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, sessionId, experimentId])
+  @@index([organizationId, sessionId])
+}
+
+model InteractionEvent {
+  id                 String             @id @default(uuid()) @db.Uuid
+  organizationId     String             @db.Uuid
+  sessionId          String             @db.Uuid
+  channel            Channel
+  name               String
+  occurredAt         DateTime           @db.Timestamptz(3)
+  runId              String?            @db.Uuid
+  productId          String?            @db.Uuid
+  rank               Int?
+  experimentVersions Json               @default("[]")
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  session            CustomerSession    @relation(fields: [organizationId, sessionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  run                RecommendationRun? @relation(fields: [organizationId, sessionId, runId], references: [organizationId, sessionId, id], onDelete: Restrict, onUpdate: NoAction)
+  product            Product?           @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, sessionId])
+  @@index([organizationId, sessionId, occurredAt])
+}
+
+model ProductInquiry {
+  fulfillmentState FulfillmentState @default(PENDING)
+  assigneeId       String?          @db.Uuid
+  assignee         UserProfile?     @relation(fields: [assigneeId], references: [id], onDelete: Restrict)
+  acknowledgedAt   DateTime?        @db.Timestamptz(3)
+  completedAt      DateTime?        @db.Timestamptz(3)
+  cancelledAt      DateTime?        @db.Timestamptz(3)
+  channel          String           @default("in_store")
+  contactEmail     String?
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @db.Uuid
+  sessionId        String           @db.Uuid
+  productId        String           @db.Uuid
+  status           String           @default("requested")
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @db.Timestamptz(3)
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  session          CustomerSession  @relation(fields: [organizationId, sessionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  product          Product          @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, fulfillmentState, createdAt])
+  @@index([organizationId, sessionId])
+}
+
+model TryOn {
+  fulfillmentState    FulfillmentState @default(PENDING)
+  assigneeId          String?          @db.Uuid
+  assignee            UserProfile?     @relation(fields: [assigneeId], references: [id], onDelete: Restrict)
+  acknowledgedAt      DateTime?        @db.Timestamptz(3)
+  completedAt         DateTime?        @db.Timestamptz(3)
+  cancelledAt         DateTime?        @db.Timestamptz(3)
+  source              String           @default("customer")
+  scannedAt           DateTime?        @db.Timestamptz(3)
+  customerConfirmedAt DateTime?        @db.Timestamptz(3)
+  id                  String           @id @default(uuid()) @db.Uuid
+  organizationId      String           @db.Uuid
+  sessionId           String           @db.Uuid
+  productId           String           @db.Uuid
+  confirmedAt         DateTime?        @db.Timestamptz(3)
+  createdAt           DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime         @updatedAt @db.Timestamptz(3)
+  organization        Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  session             CustomerSession  @relation(fields: [organizationId, sessionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  product             Product          @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, fulfillmentState, createdAt])
+  @@index([organizationId, sessionId])
+}
+
+model Transaction {
+  source         String            @default("legacy")
+  soldAt         DateTime          @default(now()) @db.Timestamptz(3)
+  attribution    String            @default("unattributed")
+  duplicateCount Int               @default(0)
+  store          Store             @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  adjustments    SaleAdjustment[]
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  sessionId      String?           @db.Uuid
+  storeId        String            @db.Uuid
+  externalRef    String
+  total          Decimal           @db.Decimal(16, 2)
+  currency       String            @default("IDR")
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  origin         CustomerSession?  @relation(fields: [organizationId, storeId, sessionId], references: [organizationId, storeId, id], onDelete: Restrict, onUpdate: NoAction)
+  items          TransactionItem[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, storeId, externalRef])
+  @@index([organizationId, storeId, soldAt])
+  @@index([organizationId, sessionId])
+}
+
+model TransactionItem {
+  recommended    Boolean      @default(false)
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  transactionId  String       @db.Uuid
+  productId      String       @db.Uuid
+  quantity       Int
+  unitPrice      Decimal      @db.Decimal(16, 2)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  transaction    Transaction  @relation(fields: [organizationId, transactionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  product        Product      @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, transactionId])
+}
+
+model Feedback {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  sessionId      String          @db.Uuid
+  rating         Int
+  subject        String
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  session        CustomerSession @relation(fields: [organizationId, sessionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, sessionId])
+}
+
+enum FulfillmentState {
+  PENDING
+  ACKNOWLEDGED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum OperationalAlertKind {
+  NEW_REQUEST
+  UNACKNOWLEDGED
+  EXCESSIVE_WAIT
+  INVENTORY_DISCREPANCY
+  INCIDENT
+}
+
+model OperationalAlert {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @db.Uuid
+  storeId        String               @db.Uuid
+  store          Store                @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  kind           OperationalAlertKind
+  subject        String
+  message        String
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+  resolvedAt     DateTime?            @db.Timestamptz(3)
+  deliveredAt    DateTime?            @db.Timestamptz(3)
+  leaseUntil     DateTime?            @db.Timestamptz(3)
+  attempts       Int                  @default(0)
+
+  @@unique([organizationId, storeId, kind, subject])
+  @@index([organizationId, storeId, resolvedAt, createdAt])
+}
+
+model SaleAdjustment {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  transactionId  String      @db.Uuid
+  transaction    Transaction @relation(fields: [organizationId, transactionId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  externalRef    String
+  kind           String
+  amount         Decimal     @db.Decimal(16, 2)
+  occurredAt     DateTime    @db.Timestamptz(3)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+
+  @@unique([organizationId, transactionId, externalRef])
+}
+
+model AnalyticsCampaign {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  storeId        String            @db.Uuid
+  store          Store             @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+  label          String
+  startsAt       DateTime          @db.Timestamptz(3)
+  endsAt         DateTime          @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  sessions       CustomerSession[]
+  daily          AnalyticsDaily[]
+
+  @@unique([organizationId, storeId, id])
+  @@index([organizationId, storeId, startsAt, endsAt])
+}
+
+model AnalyticsDaily {
+  id              String             @id @default(uuid()) @db.Uuid
+  organizationId  String             @db.Uuid
+  storeId         String             @db.Uuid
+  store           Store              @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+  day             String             @db.Char(10)
+  cohort          String
+  campaignId      String?            @db.Uuid
+  campaign        AnalyticsCampaign? @relation(fields: [organizationId, storeId, campaignId], references: [organizationId, storeId, id], onDelete: Restrict)
+  visitors        Int?
+  verifiedContent Int?
+  sourceRef       String
+  updatedAt       DateTime           @updatedAt @db.Timestamptz(3)
+
+  @@unique([organizationId, storeId, day, cohort])
+}
+
+model FinancialPeriod {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @db.Uuid
+  storeId            String   @db.Uuid
+  store              Store    @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+  month              String   @db.Char(7)
+  initialInvestment  Decimal  @db.Decimal(16, 2)
+  softwareCost       Decimal  @db.Decimal(16, 2)
+  inferenceCost      Decimal  @db.Decimal(16, 2)
+  operationsCost     Decimal  @db.Decimal(16, 2)
+  grossProfit        Decimal  @db.Decimal(16, 2)
+  controlGrossProfit Decimal? @db.Decimal(16, 2)
+  sourceRef          String
+  controlRef         String?
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([organizationId, storeId, month])
+}
+
+model EvaluationCase {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  storeId        String             @db.Uuid
+  store          Store              @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+  name           String
+  profile        Json
+  expectedSkus   String[]
+  reviewerId     String             @db.Uuid
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+  results        EvaluationResult[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, storeId, createdAt])
+}
+
+model EvaluationResult {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  caseId         String         @db.Uuid
+  evaluationCase EvaluationCase @relation(fields: [organizationId, caseId], references: [organizationId, id], onDelete: Restrict)
+  batchId        String         @db.Uuid
+  promptId       String?        @db.Uuid
+  prompt         PromptVersion? @relation(fields: [organizationId, promptId], references: [organizationId, id], onDelete: Restrict)
+  label          String
+  model          String?
+  provider       String?
+  candidates     String[]
+  ranking        Json           @default("[]")
+  configuration  Json           @default("{}")
+  status         String         @default("pending")
+  schemaValid    Boolean?
+  invalidSkus    Int?
+  returnedSkus   Int?
+  relevantCount  Int?
+  outputCount    Int?
+  durationMs     Int?
+  inputTokens    Int?
+  outputTokens   Int?
+  reservedUsd    Decimal?       @db.Decimal(12, 8)
+  costUsd        Decimal?       @db.Decimal(12, 8)
+  fallback       Boolean        @default(false)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@unique([organizationId, batchId, label])
+  @@index([organizationId, createdAt])
+}
+
+model RateBucket {
+  key    String   @db.Char(64)
+  window DateTime @db.Timestamptz(3)
+  count  Int      @default(1)
+
+  @@id([key, window])
+  @@index([window])
+}
+
+model WebhookNonce {
+  key       String   @id @db.Char(64)
+  expiresAt DateTime @db.Timestamptz(3)
+
+  @@index([expiresAt])
+}
+
+model OperationMinute {
+  operation String
+  minute    DateTime @db.Timestamptz(3)
+  outcome   String
+  count     Int      @default(1)
+
+  @@id([operation, minute, outcome])
+  @@index([minute])
+}
+
+model PrivacyAudit {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  storeId        String   @db.Uuid
+  actorId        String?  @db.Uuid
+  action         String
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([organizationId, storeId, createdAt])
+}
