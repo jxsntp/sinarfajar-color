@@ -22,9 +22,9 @@ Every registered kiosk offers local camera preview after customer consent and br
 
 Replace the example UUID, timestamp and matrix when commissioning a station. This matrix is a synthetic sRGB example. The checked-in Google Face Landmarker v1 model loads from the app origin. Build verifies its SHA-256 and copies the exact installed MediaPipe package's WASM files into the same-origin public directory. The worker takes one frame at a time and releases frames and derived samples on completion or cancellation. Research and automatic report permissions derive from the enrolled device. The public automatic method list is empty.
 
-## Try a camera-generated palette on localhost
+## Try a camera-generated palette
 
-Start an enrolled manual kiosk session at `http://localhost:3000/kiosk`. Select **Coba analisis warna dengan kamera**, allow browser camera access, center your face in even light, and select **Analisis warna saya**. MediaPipe locates both brows and nearby skin. The local worker checks multiple frames and uses the lightness contrast to suggest named color swatches. The trial assumes sRGB with a D65 white point and uses provisional thresholds. Its result is an experimental styling suggestion.
+Start an enrolled manual kiosk session on the configured HTTPS kiosk origin or at `http://localhost:3000/kiosk` in development. Select **Coba analisis warna dengan kamera**, allow browser camera access, center your face in even light, and select **Analisis warna saya**. MediaPipe locates both brows and nearby skin. The local worker checks multiple frames and uses the lightness contrast to suggest named color swatches. The trial assumes sRGB with a D65 white point and uses provisional thresholds. Its result is an experimental styling suggestion.
 
 The local worker uses the tone shortlist and apparent skin color to rank three named swatches and to suggest a metal from yellow, rose and white gold display samples. The provisional score uses the Ou–Luo two-patch harmony model. It uses sRGB/D65 display samples for metals, whose real appearance varies with finish and lighting. Research sessions stay blinded. Hosted automated results require the v2 calibration and validation process. [Ou and Luo color harmony model](https://doi.org/10.1002/col.20208)
 

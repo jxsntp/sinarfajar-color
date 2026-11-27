@@ -53,3 +53,7 @@ Use the existing browser capture worker to offer a camera-generated palette duri
 ## Camera snapshot, private report and registration
 
 The local development flow shows the top three camera-generated shades and one suggested metal on the kiosk, then issues a QR for the detailed report. The phone asks for name, email and phone number before the visitor explicitly requests recommendations. The QR report remains account-free, and the registration step does not grant marketing consent. The camera trial uses a provisional two-color harmony score and display metal samples. Hosted automatic results still require the v2 validation review.
+
+## 2026-11-27 — Experimental camera trial on hosted kiosks
+
+Offer the same experimental styling trial on the configured HTTPS origin after an enrolled manual kiosk starts a session. Use the same eligibility check when issuing the QR report. The browser processes the capture and the report stores the ranked swatches and suggested metal. The consent screen describes the trial, and the manual draping option remains available. Validated automatic mode still requires specialist, hardware, and held-out review.

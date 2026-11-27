@@ -8,11 +8,13 @@ import { HttpError } from "@/lib/http";
 import { storeFilter, allow, type StaffScope } from "../authentication/access";
 import { writeEvent } from "../analytics/events";
 import { assignExperiment } from "../experiments/assign";
-import { cameraNotice, stationFor } from "../color-analysis/stations";
+import { cameraNotice, cameraTrialFor, stationFor } from "../color-analysis/stations";
 import { resultInput } from "../color-analysis/result";
 import { resolveColorResult } from "../color-analysis/report-result";
 
-export async function startSession(deviceKey: string) {
+const kioskWriteOptions = { timeout: 15_000 };
+
+export async function startSession(deviceKey: string, host?: string | null) {
   const deviceHash = digest(deviceKey, "device");
   const credential = issue("kiosk");
   const expiresAt = new Date(Date.now() + env().KIOSK_SESSION_MINUTES * 60000);
@@ -62,15 +64,17 @@ export async function startSession(deviceKey: string) {
       name: "kiosk_session_started",
       occurredAt: new Date(),
     });
+    const station = stationFor(device.id);
     return {
       sessionId: session.id,
       credential,
       expiresAt,
       variant: assignment?.variant ?? "palette-first",
-      station: stationFor(device.id),
+      station,
+      trialStation: cameraTrialFor(station, host),
       cameraNotice,
     };
-  }, { timeout: 15_000 });
+  }, kioskWriteOptions);
 }
 export async function kioskScope(tx: Prisma.TransactionClient, token: string) {
   const key = digest(token, "kiosk");
@@ -196,7 +200,7 @@ export async function issueReport(
       occurredAt: new Date(),
     });
     return { reportPath, reportUrl: origin + reportPath, expiresAt };
-  });
+  }, kioskWriteOptions);
 }
 export async function recoverReport(token: string) {
   if (!env().ENABLE_MOBILE_REPORTS) throw new HttpError(503, "reports_disabled");
