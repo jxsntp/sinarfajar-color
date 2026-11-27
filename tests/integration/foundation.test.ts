@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { beforeAll, afterAll, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { staffScope } from "@/domains/authentication/staff";
@@ -195,4 +196,20 @@ it("serializes kiosk restarts and enforces device revocation on active sessions"
     await expect(resetSession(start.credential)).rejects.toMatchObject({
       status: 401,
     });
+});
+
+it("starts a kiosk session after a device lock outlasts Prisma's default deadline", async () => {
+  const device = await registerDevice(admin, storeId, "Slow kiosk", "KIOSK");
+  const { promise: locked, resolve: signalLocked } = Promise.withResolvers<void>();
+  const blocker = db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Device" WHERE id = ${device.deviceId}::uuid FOR UPDATE`;
+    signalLocked();
+    await delay(6_000);
+  }, { timeout: 10_000 });
+
+  await Promise.race([locked, blocker]);
+  const [session] = await Promise.all([startSession(device.credential), blocker]);
+  expect(await db.customerSession.count({
+    where: { id: session.sessionId, deviceId: device.deviceId, endedAt: null },
+  })).toBe(1);
 });

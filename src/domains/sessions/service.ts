@@ -16,6 +16,7 @@ export async function startSession(deviceKey: string) {
   const deviceHash = digest(deviceKey, "device");
   const credential = issue("kiosk");
   const expiresAt = new Date(Date.now() + env().KIOSK_SESSION_MINUTES * 60000);
+  // Allow for the device lock and session, experiment and event writes over a remote connection.
   return db.$transaction(async (tx) => {
     const [device] = await tx.$queryRaw<
       { id: string; organizationId: string; storeId: string }[]
@@ -69,7 +70,7 @@ export async function startSession(deviceKey: string) {
       station: stationFor(device.id),
       cameraNotice,
     };
-  });
+  }, { timeout: 15_000 });
 }
 export async function kioskScope(tx: Prisma.TransactionClient, token: string) {
   const key = digest(token, "kiosk");
