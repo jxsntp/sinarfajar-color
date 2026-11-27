@@ -6,6 +6,7 @@ import { readTrial } from "@/domains/color-analysis/result";
 import { isRegistered, registerTrial, registrationInput } from "@/domains/sessions/registration";
 import { customerPrivacy } from "@/domains/privacy/service";
 import { db } from "@/lib/db";
+import * as runtimeEnvironment from "@/lib/env";
 import { issue, digest } from "@/lib/credentials";
 import { issueReport, recoverReport, reportInput, reportScope, resetSession, revokeReport, startSession } from "@/domains/sessions/service";
 import { paletteVersion, methodVersion, swatchFor } from "@/domains/color-analysis/swatches";
@@ -18,7 +19,10 @@ import { addCatalogPhoto, analyzeCatalogPhoto, reviewCatalogPhoto } from "@/doma
 import { photoTagInput } from "@/domains/catalog/photo-tags";
 
 afterAll(() => db.$disconnect());
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+});
 async function fixture() {
   const org = await db.organization.create({ data: { slug: "color-" + randomUUID(), name: "Color test" } });
   const store = await db.store.create({ data: { organizationId: org.id, name: "Color test store", code: "TST" } });
@@ -167,8 +171,10 @@ it("gates automatic reports and persists immutable manual swatches with duplicat
 
 it("hands off ranked camera colors and requires three-field registration before jewelry discovery", async () => {
   vi.stubEnv("APP_ORIGIN", "https://kiosk.example.test");
+  vi.spyOn(runtimeEnvironment, "env").mockReturnValue({ ...runtimeEnvironment.env(), APP_ENV: "production" });
   const { org, store, key } = await fixture();
   const session = await startSession(key, "kiosk.example.test");
+  expect(session.station.paletteVersion).toBeNull();
   const scope = { organizationId: org.id, sessionId: session.sessionId };
   const consent = await db.consent.create({
     data: { ...scope, granted: true, purpose: "local_camera", version: cameraNotice },

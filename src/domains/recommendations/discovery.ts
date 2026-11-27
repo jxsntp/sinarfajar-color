@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { HttpError } from "@/lib/http";
-import { env } from "@/lib/env";
 import { readTrial } from "../color-analysis/result";
 import { isRegistered } from "../sessions/registration";
 import { reportScope } from "../sessions/service";
@@ -43,6 +42,7 @@ import {
 
 const hash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const discoveryWriteOptions = { timeout: 15_000 };
 async function event(
   tx: Tx,
   session: SessionScope,
@@ -72,7 +72,6 @@ async function prepare(token: string, key: string, requested: Preferences) {
       where: { organizationId_sessionId: scope },
     });
     const trial = readTrial(analysis?.paletteSnapshot);
-    if (trial && env().APP_ENV !== "development") throw new HttpError(403, "trial_unavailable");
     if (trial && !(await isRegistered(session, tx))) throw new HttpError(403, "registration_required");
     const prefs: Preferences = trial ? { preferredGold: trial.gold } : requested;
     const preferenceHash = hash(prefs);
@@ -222,7 +221,7 @@ async function prepare(token: string, key: string, requested: Preferences) {
       palette: storedPalette(run.colorContext),
       template: chosenPrompt?.template,
     };
-  });
+  }, discoveryWriteOptions);
 }
 async function paidRank<T>(
   organizationId: string,
@@ -445,6 +444,6 @@ export async function activate(
       ? published.length ? "photo_recommendation_generated" : "photo_recommendation_no_matches"
       : items.length ? "recommendation_generated" : "recommendation_no_matches";
     await event(tx, session, outcome, run.id);
-  });
+  }, discoveryWriteOptions);
   return readResult(token, run.id);
 }

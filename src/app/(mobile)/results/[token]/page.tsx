@@ -10,7 +10,6 @@ import { ReportOpen } from "./report-open";
 import { PrivacyControls } from "./privacy-controls";
 import { ReportTools } from "./report-tools";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 
 export default async function Report({
   params,
@@ -35,7 +34,6 @@ export default async function Report({
   const tone = isTone(analysis.profile) ? analysis.profile : "uncertain";
   const swatches = readPalette(analysis.paletteSnapshot);
   const trial = readTrial(analysis.paletteSnapshot);
-  if (trial && env().APP_ENV !== "development") notFound();
   const lang = brand.locale === "en-US" ? "en" : "id";
   const groups = tones.filter((group) => analysis.toneGroups.includes(group));
   const heading = trial ? copy.trialPalette : groups.length

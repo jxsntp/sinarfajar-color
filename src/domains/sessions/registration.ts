@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { env } from "@/lib/env";
 import { HttpError } from "@/lib/http";
 import { readTrial } from "../color-analysis/result";
 import type { SessionScope } from "../analytics/events";
@@ -24,7 +23,6 @@ export async function isRegistered(session: SessionScope, tx: Tx = db) {
 }
 
 export async function registerTrial(token: string, data: z.infer<typeof registrationInput>) {
-  if (env().APP_ENV !== "development") throw new HttpError(403, "trial_unavailable");
   return db.$transaction(async (tx) => {
     const session = await reportScope(token, tx);
     await tx.$queryRaw`SELECT id FROM "CustomerSession" WHERE id = ${session.id}::uuid AND "organizationId" = ${session.organizationId}::uuid FOR UPDATE`;
@@ -40,5 +38,5 @@ export async function registerTrial(token: string, data: z.infer<typeof registra
       ON CONFLICT ("organizationId", "sessionId") DO NOTHING
     `;
     return { registered: true };
-  });
+  }, { timeout: 15_000 });
 }

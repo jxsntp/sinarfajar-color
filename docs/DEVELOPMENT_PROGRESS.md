@@ -188,3 +188,5 @@ A live session-start request with a diagnostic device returned HTTP 500 after 6.
 ### Hosted camera styling trial
 
 The configured HTTPS kiosk origin now offers the camera trial after an enrolled manual session starts. Session startup and report issuance enforce the same station and origin checks. The existing consent and manual fallback apply, and report issuance uses a 15-second transaction deadline for the additional consent and result writes. The integration checks cover local eligibility, the configured HTTPS origin, an unrelated host, missing consent, and the ranked palette handoff.
+
+The live kiosk confirmed the camera capture and QR creation. The mobile report and discovery screens now accept a stored trial via its report bearer. Registration and explicit recommendation activation use the same trial authorization on hosted deployments. The production-mode integration scenario exercises the trial palette, consent, registration and activation with the isolated development database.
