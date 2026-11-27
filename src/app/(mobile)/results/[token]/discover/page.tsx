@@ -1,6 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { env } from "@/lib/env";
 import { readTrial } from "@/domains/color-analysis/result";
 import { isRegistered } from "@/domains/sessions/registration";
 import { photoUrl } from "@/domains/catalog/photo";
@@ -35,7 +33,6 @@ export default async function Discover({
     }),
   ]);
   const trial = readTrial(analysis?.paletteSnapshot);
-  if (trial && env().APP_ENV !== "development") notFound();
   const trialRegistered = trial ? await isRegistered(session) : undefined;
   const version = analysis?.paletteVersion ?? paletteVersion;
   const shades = paletteSnapshot(availablePalette(version));
