@@ -112,8 +112,8 @@ Product labels accept an exact SKU, a catalog barcode or the project QR payload 
 Activation is an explicit same-origin mobile POST, using a valid report and the idempotency key. Requests flagged as previews are refused. Crowd and scoped rate limits return 429 with `Retry-After`. Body caps reject oversized requests with 413. Get-only report, product and recommendation reads never activate paid inference. Hosted paid access has an explicit environment gate. See the deployment guide for webhook signing, alert receiver duties and production scheduling.
 
 
-## Local camera trial handoff
+## Camera trial handoff
 
-An enrolled manual kiosk on localhost in development can issue a `trial` result through `POST /api/kiosk/report`. It carries exactly three unique ranked swatch IDs and one gold color. The server resolves those swatches from the station's versioned palette and checks the session camera consent.
+An enrolled manual kiosk can use the experimental camera trial on its configured HTTPS application origin or on localhost in development. `POST /api/kiosk/sessions` returns `trialStation` when eligible. `POST /api/kiosk/report` checks the same eligibility and current session camera consent before resolving exactly three unique ranked swatch IDs and one suggested gold color from the versioned palette.
 
 `POST /api/mobile/registration` accepts only a name, email and phone number with a trial report bearer. Repeated submissions retain the original registration. A trial activation without a registration returns `403 registration_required`. Opening either mobile page generates no recommendations. The registration submit action activates discovery from the saved camera result.

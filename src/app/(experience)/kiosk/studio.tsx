@@ -21,6 +21,7 @@ type Session = {
   expiresAt: string;
   variant: string;
   station: Station;
+  trialStation?: Station;
   cameraNotice: string;
 };
 
@@ -60,13 +61,11 @@ export function Studio({
   t,
   enrolled,
   locale,
-  trialStation,
   showTestReportLink,
 }: {
   t: ReturnType<typeof messages>;
   enrolled: boolean;
   locale: string;
-  trialStation?: Station;
   showTestReportLink: boolean;
 }) {
   const copy = experience(locale);
@@ -97,7 +96,7 @@ export function Studio({
   const resultRef = useRef<HTMLDivElement>(null);
   const began = useRef(false);
   const version = session?.station.paletteVersion;
-  const cameraStation = trial ? trialStation : session?.station;
+  const cameraStation = trial ? session?.trialStation : session?.station;
   const pairs = useMemo(() => version ? comparableDrapes(version) : [], [version]);
   const pair = pairs[votes.length];
   const lang = locale === "en-US" ? "en" : "id";
@@ -392,6 +391,7 @@ export function Studio({
           {session && step === "privacy" && (
             <>
               <p>{copy.notice}</p>
+              {session.trialStation && <p>{copy.trialNotice}</p>}
               <label className="inline-option">
                 <input
                   type="checkbox"
@@ -401,7 +401,7 @@ export function Studio({
                 {copy.assisted}
               </label>
               <div className="controls">
-                {trialStation && session.station.mode === "manual" && <Button onClick={() => enter(true, true)} disabled={busy}>
+                {session.trialStation && <Button onClick={() => enter(true, true)} disabled={busy}>
                   {copy.tryAnalysis}
                 </Button>}
                 <Button onClick={() => enter(false)} disabled={busy}>

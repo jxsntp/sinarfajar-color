@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, expect, it, vi } from "vitest";
-import { cameraNotice, localCameraTrial } from "@/domains/color-analysis/stations";
+import { cameraNotice, cameraTrialFor, stationFor } from "@/domains/color-analysis/stations";
 import { rankTrial } from "@/domains/color-analysis/trial-ranking";
 import { readTrial } from "@/domains/color-analysis/result";
 import { isRegistered, registerTrial, registrationInput } from "@/domains/sessions/registration";
@@ -58,11 +58,11 @@ it("imports a photo, stores AI suggestions for review, and chooses one published
   await analyzeCatalogPhoto(admin, draft.id, vision);
   expect(vision).toHaveBeenCalledTimes(2);
   await expect(reviewCatalogPhoto({ ...admin, storeId: otherStore.id }, draft.id, null)).rejects.toMatchObject({ status: 404 });
-  const session = await startSession(key);
+  const session = await startSession(key, "localhost:3000");
   const consent = await db.consent.create({ data: {
     organizationId: org.id, sessionId: session.sessionId, granted: true, purpose: "local_camera", version: cameraNotice,
   } });
-  const station = localCameraTrial("localhost:3000", "development")!;
+  const station = session.trialStation!;
   const result = rankTrial([56, 18, 26], station.calibration!, paletteVersion, {
     tones: ["pale", "dull"], quality: "stable",
   })!;
@@ -119,13 +119,15 @@ it("imports a photo, stores AI suggestions for review, and chooses one published
   expect(await db.inventory.count({ where: { organizationId: org.id } })).toBe(0);
 });
 
-it("limits the experimental color estimate to localhost in development", () => {
-  expect(localCameraTrial("localhost:3000", "development")).toMatchObject({
+it("allows the camera trial on the kiosk origin and local development", () => {
+  vi.stubEnv("APP_ORIGIN", "https://kiosk.example.test");
+  const manual = stationFor(randomUUID());
+  expect(cameraTrialFor(manual, "localhost:3000")).toMatchObject({
     mode: "trial", paletteVersion, calibration: { revision: "assumed-srgb-d65" },
   });
-  expect(localCameraTrial("kiosk.example.test", "development")).toBeUndefined();
-  expect(localCameraTrial("localhost:3000", "production")).toBeUndefined();
-  expect(localCameraTrial("127.0.0.1:3000", "uat")).toBeUndefined();
+  expect(cameraTrialFor({ ...manual, paletteVersion: null }, "kiosk.example.test")).toMatchObject({ mode: "trial", paletteVersion });
+  expect(cameraTrialFor(manual, "other.example.test")).toBeUndefined();
+  expect(cameraTrialFor({ ...manual, mode: "research" }, "kiosk.example.test")).toBeUndefined();
 });
 
 it("gates automatic reports and persists immutable manual swatches with duplicate-safe QR recovery", async () => {
@@ -164,21 +166,24 @@ it("gates automatic reports and persists immutable manual swatches with duplicat
 });
 
 it("hands off ranked camera colors and requires three-field registration before jewelry discovery", async () => {
+  vi.stubEnv("APP_ORIGIN", "https://kiosk.example.test");
   const { org, store, key } = await fixture();
-  const session = await startSession(key);
+  const session = await startSession(key, "kiosk.example.test");
   const scope = { organizationId: org.id, sessionId: session.sessionId };
   const consent = await db.consent.create({
     data: { ...scope, granted: true, purpose: "local_camera", version: cameraNotice },
   });
-  const station = localCameraTrial("localhost:3000", "development")!;
+  const station = session.trialStation!;
   const result = rankTrial([56, 18, 26], station.calibration!, paletteVersion, {
     tones: ["pale", "dull"], quality: "stable",
   })!;
   const token = issue("report");
   const input = { result, reportCredential: token, cameraConsentId: consent.id };
-  await expect(issueReport(session.credential, input, "kiosk.example.test"))
+  await expect(issueReport(session.credential, input, "other.example.test"))
     .rejects.toMatchObject({ code: "trial_unavailable" });
-  await issueReport(session.credential, input, "localhost:3000");
+  await expect(issueReport(session.credential, { ...input, cameraConsentId: undefined }, "kiosk.example.test"))
+    .rejects.toMatchObject({ code: "camera_consent_required" });
+  await issueReport(session.credential, input, "kiosk.example.test");
   const saved = await db.colorAnalysis.findUniqueOrThrow({ where: { organizationId_sessionId: scope } });
   expect(readTrial(saved.paletteSnapshot)?.swatches.map(({ id }) => id)).toEqual(result.swatchIds);
   expect(readTrial(saved.paletteSnapshot)?.gold).toBe(result.gold);

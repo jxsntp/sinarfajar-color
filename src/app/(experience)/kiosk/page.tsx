@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { cookies, headers } from "next/headers";
-import { localCameraTrial } from "@/domains/color-analysis/stations";
+import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 import type { CSSProperties } from "react";
 import { brandFor, messages } from "@/domains/organizations/branding";
@@ -10,7 +9,6 @@ export default async function Kiosk() {
   const brand = await brandFor();
   const t = messages(brand.locale);
   const environment = env().APP_ENV;
-  const trialStation = localCameraTrial((await headers()).get("host"), environment);
   return (
     <main
       className="shell"
@@ -22,7 +20,7 @@ export default async function Kiosk() {
         <Link href="/login">{t.staff}</Link>
       </header>
       <Studio t={t} locale={brand.locale} enrolled={(await cookies()).has("inaura_device")}
-        trialStation={trialStation} showTestReportLink={environment === "development"} />
+        showTestReportLink={environment === "development"} />
     </main>
   );
 }

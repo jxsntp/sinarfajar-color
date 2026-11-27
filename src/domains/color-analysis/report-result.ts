@@ -1,8 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { HttpError } from "@/lib/http";
 import type { SessionScope } from "../analytics/events";
-import { cameraNotice, localCameraTrial, stationFor, trialMethod } from "./stations";
-import { env } from "@/lib/env";
+import { cameraNotice, cameraTrialFor, stationFor, trialMethod } from "./stations";
 import { manualMethod, paletteFor, paletteSnapshot, type Tone } from "./swatches";
 import { toneInput, type ColorResultInput } from "./result";
 import { palettes } from "../sessions/palette";
@@ -24,11 +23,12 @@ export async function resolveColorResult(
       paletteVersion: station.paletteVersion, paletteSnapshot: paletteSnapshot(neutrals),
     };
   }
-  if (station.paletteVersion !== input.paletteVersion)
+  const trial = input.kind === "trial" ? cameraTrialFor(station, host) : undefined;
+  if (input.kind === "trial" && !trial)
+    throw new HttpError(403, "trial_unavailable");
+  if ((trial ?? station).paletteVersion !== input.paletteVersion)
     throw new HttpError(400, "palette_revision_unavailable");
   let toneGroups: Tone[];
-  if (input.kind === "trial" && (station.mode !== "manual" || !localCameraTrial(host ?? null, env().APP_ENV)))
-    throw new HttpError(403, "trial_unavailable");
   if (input.kind === "automatic" && (station.mode !== "automatic" || station.methodVersion !== input.methodVersion ||
       station.calibration?.revision !== input.calibrationVersion))
     throw new HttpError(403, "automatic_unavailable");

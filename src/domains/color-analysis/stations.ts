@@ -40,11 +40,16 @@ const fixtureLimits: QualityLimits = {
 const fixtureRule: ToneRule = {
   low: 0.10, high: 0.38, mixedWidth: 0.10, tieOrder: ["vivid", "dark", "pale", "dull"],
 };
-export function localCameraTrial(
-  host: string | null,
-  environment: ReturnType<typeof env>["APP_ENV"],
+export function cameraTrialFor(
+  station: Station,
+  host?: string | null,
 ): Station | undefined {
-  if (environment !== "development" || !/^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host ?? "")) return;
+  if (station.mode !== "manual" || !host) return;
+  const { APP_ENV, APP_ORIGIN } = env();
+  const developmentHost = APP_ENV === "development" && /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host);
+  const hostedOrigin = APP_ORIGIN && new URL(APP_ORIGIN);
+  const hostedHost = hostedOrigin && hostedOrigin.protocol === "https:" && hostedOrigin.host === host.toLowerCase();
+  if (!developmentHost && !hostedHost) return;
   return {
     mode: "trial", preview: true, paletteVersion, methodVersion: trialMethod,
     calibration: {

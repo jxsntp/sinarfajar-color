@@ -184,3 +184,7 @@ All 10 approved migrations applied to the initially empty Supabase application s
 ### Kiosk session transaction deadline
 
 A live session-start request with a diagnostic device returned HTTP 500 after 6.6 seconds and committed no session. The diagnostic device was revoked. Session startup now allows up to 15 seconds in its transaction for the device lock, experiment assignment, and event write. Server logs include Prisma error codes when database failures cause a 500. The integration regression holds the device lock past Prisma's five-second default and verifies that the new session persists.
+
+### Hosted camera styling trial
+
+The configured HTTPS kiosk origin now offers the camera trial after an enrolled manual session starts. Session startup and report issuance enforce the same station and origin checks. The existing consent and manual fallback apply, and report issuance uses a 15-second transaction deadline for the additional consent and result writes. The integration checks cover local eligibility, the configured HTTPS origin, an unrelated host, missing consent, and the ranked palette handoff.

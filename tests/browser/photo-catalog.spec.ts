@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { identity } from "../support/identity";
 import { issue, digest } from "@/lib/credentials";
 import { startSession, issueReport } from "@/domains/sessions/service";
-import { cameraNotice, localCameraTrial } from "@/domains/color-analysis/stations";
+import { cameraNotice } from "@/domains/color-analysis/stations";
 import { paletteVersion } from "@/domains/color-analysis/swatches";
 import { rankTrial } from "@/domains/color-analysis/trial-ranking";
 
@@ -45,11 +45,11 @@ test("publishes catalog photos and shows one visual pick per jewelry category af
   await db.device.create({
     data: { organizationId: org.id, storeId: store.id, label: "Photo fixture kiosk", keyHash: digest(key, "device") },
   });
-  const session = await startSession(key);
+  const session = await startSession(key, host);
   const consent = await db.consent.create({
     data: { organizationId: org.id, sessionId: session.sessionId, granted: true, purpose: "local_camera", version: cameraNotice },
   });
-  const station = localCameraTrial(host, "development")!;
+  const station = session.trialStation!;
   const result = rankTrial([56, 18, 26], station.calibration!, paletteVersion, { tones: ["pale", "dull"], quality: "stable" })!;
   const token = issue("report");
   const report = await issueReport(session.credential, { result, reportCredential: token, cameraConsentId: consent.id }, host);
