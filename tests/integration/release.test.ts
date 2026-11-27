@@ -108,6 +108,10 @@ it("emits aggregate monitoring only to the configured collector", async () => {
   const outage = await readinessResponse(async () => { throw new Error("synthetic database disconnect"); });
   expect(outage.status).toBe(503);
   expect(await outage.json()).toEqual({ status: "unavailable" });
+  const clientSlug = process.env.CLIENT_SLUG;
+  vi.stubEnv("CLIENT_SLUG", "missing-" + randomUUID());
+  expect((await readiness()).status).toBe(503);
+  vi.stubEnv("CLIENT_SLUG", clientSlug);
   expect((await readiness()).status).toBe(200);
   const request = (key: string) => new Request("https://example.test/api/internal/monitor", { headers: { Authorization: "Bearer " + key } });
   expect((await monitor(request("unassigned"))).status).toBe(401);

@@ -7,11 +7,12 @@
   },
   "scripts": {
     "predev": "node scripts/local-vision-assets.mjs",
-    "prebuild": "node scripts/local-vision-assets.mjs",
+    "prebuild": "tsx scripts/check-environment.ts --vercel-only && node scripts/local-vision-assets.mjs",
     "dev": "next dev",
     "build": "prisma generate && next build --webpack",
     "start": "next start",
     "lint": "eslint .",
+    "check:env": "tsx scripts/check-environment.ts",
     "typecheck": "prisma generate && next typegen && tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.ts",

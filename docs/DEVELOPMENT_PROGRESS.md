@@ -174,3 +174,9 @@ The additive migration ran on the isolated development database. All 21 unit tes
 ### Windows build with a running kiosk
 
 Windows was holding the generated Prisma engine open while the kiosk used the database, which prevented `prisma generate` from replacing it. When the installed Prisma CLI has the matching engine revision, the Windows server loads that library so the generated copy remains available for builds. The full `npm run build` passed while the kiosk kept the same process and reported database readiness before and after the build. Lint and all 21 unit tests passed.
+
+### Vercel configuration and Supabase readiness
+
+Hosted builds now report all missing or invalid environment settings before compilation. The runtime uses the same validation and readiness checks that the kiosk organization and required catalog tables can be queried. A deployment can explicitly disable the inventory age cutoff with `INVENTORY_MAX_AGE_MINUTES=off`.
+
+All 10 approved migrations applied to the initially empty Supabase application schema. The configured Sinar Fajar organization was then created and verified. The completed hosted env file passed preflight. A local production-mode server using the hosted database returned HTTP 200 for readiness, the kiosk, and the staff login page. Lint, 25 unit tests, 14 targeted integration tests, and the full local build passed. Vercel settings and deployment remain pending.

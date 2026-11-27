@@ -1,15 +1,22 @@
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 
-const probeDatabase = () => db.$queryRaw`SELECT 1`;
+async function probeDatabase(clientSlug: string) {
+  const [state] = await db.$queryRaw<{ organization: boolean }[]>`
+    SELECT EXISTS (SELECT 1 FROM "Organization" WHERE "slug" = ${clientSlug}) AS organization,
+           EXISTS (SELECT 1 FROM "Inventory") AS inventory,
+           EXISTS (SELECT 1 FROM "PhotoCatalogItem") AS photo_catalog
+  `;
+  if (!state?.organization) throw new Error("organization_not_configured");
+}
 
-export async function readinessResponse(probe: () => Promise<unknown> = probeDatabase) {
+export async function readinessResponse(probe: (clientSlug: string) => Promise<unknown> = probeDatabase) {
   const headers = { "Cache-Control": "no-store" };
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    env();
+    const { CLIENT_SLUG } = env();
     await Promise.race([
-      probe(),
+      probe(CLIENT_SLUG),
       new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("database_timeout")), 2000); }),
     ]);
     return Response.json({ status: "ready" }, { headers });

@@ -10,11 +10,21 @@
 | AI and automation | Mock transport and no external secrets | Dedicated approved API credentials and capped spend | Distinct restricted keys, explicit approval and billing alerts |
 | Data | Synthetic fixtures | Approved UAT data | Approved catalog and verified inventory |
 
-Set `APP_ENV` appropriately and keep `APP_ORIGIN` and `REPORT_ORIGIN` equal to the exact HTTPS origin for each hosted environment. Configure `sslmode=require` or stronger for both database URLs. Use a dedicated runtime role with only the app's required table/sequence access and separate migration credentials. Provision the three unrelated secrets `SECURITY_KEY`, `INBOUND_JOB_SECRET`, `MONITOR_TOKEN` and optionally a fourth `OPS_N8N_SIGNING_KEY`. Use server-only secret stores. Set a store-approved `INVENTORY_MAX_AGE_MINUTES` and independent OpenRouter provider allowlists, usage caps and credentials per environment. Keep `ENABLE_HOSTED_OPENROUTER=false` until the environment owner approves paid access. Seed only synthetic development data. Provision staff in the correct Auth project and check their organization and store assignments.
+Set `APP_ENV` appropriately and keep `APP_ORIGIN` and `REPORT_ORIGIN` equal to the exact HTTPS origin for each hosted environment. Configure `sslmode=require` or stronger for both database URLs. Use a dedicated runtime role with only the app's required table/sequence access and separate migration credentials. Provision the three unrelated secrets `SECURITY_KEY`, `INBOUND_JOB_SECRET`, `MONITOR_TOKEN` and optionally a fourth `OPS_N8N_SIGNING_KEY`. Use server-only secret stores. Set a store-approved `INVENTORY_MAX_AGE_MINUTES` or explicitly set it to `off` to disable the inventory age cutoff. Inventory lookup still uses the stored price and stock. Configure independent OpenRouter provider allowlists, usage caps and credentials per environment. Keep `ENABLE_HOSTED_OPENROUTER=false` until the environment owner approves paid access. Seed only synthetic development data. Provision staff in the correct Auth project and check their organization and store assignments.
 
 The runtime uses server-side Prisma for tenant scoping. Supabase direct customer roles must have no app-table write access. Confirm the hosted runtime and migration grants, composite constraints, RLS and API exposure against deployment-role identities. The `product-photos` bucket holds public catalog images only. Require the restricted server credential for uploads and test anonymous read and denial of anonymous create, replace and delete. Store no camera data, report attachments or customer uploads there.
 
 Disable or redact request logs, tracing, error collection and Vercel drains that capture raw `/results/<bearer>` paths, Authorization, cookies, signed job bodies or private contact addresses. Verify the entire request path including edge, redirects, load balancer, external monitor and support tools with synthetic values. The mobile route returns no-store and no-referrer headers. Next incoming-request logging is off. Browser hydration still uses inline scripts permitted by CSP. Hosted log redaction and role grants require acceptance evidence.
+
+## Validate configuration before a release
+
+Use an ignored environment file for the selected deployment and check it against the app's runtime schema before entering settings in Vercel.
+
+```bash
+npm run check:env -- --file .env.vercel --target production
+```
+
+Use `--target preview` with `APP_ENV=uat` for a Vercel preview. The command lists invalid variable names without printing their values. With Vercel system variables enabled, the same check runs before the project's `npm run build`. A passing check validates configuration syntax and relationships. Check database connectivity and migrations separately. The readiness endpoint also verifies that the kiosk's organization exists and its inventory and photo catalog tables can be queried.
 
 ## Release procedure
 
