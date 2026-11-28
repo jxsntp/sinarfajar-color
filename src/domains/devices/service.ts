@@ -39,3 +39,22 @@ export async function revokeDevice(scope: StaffScope, id: string) {
   if (!result.count) throw new HttpError(404, "unknown_device");
   return { revoked: true };
 }
+/** The active kiosk this browser is enrolled as, within the staff member's organization. */
+export async function enrolledKiosk(scope: StaffScope, deviceKey: string | undefined) {
+  if (!deviceKey) return null;
+  return db.device.findFirst({
+    where: {
+      organizationId: scope.organizationId, keyHash: digest(deviceKey, "device"), kind: "KIOSK",
+      revokedAt: null, expiresAt: { gt: new Date() },
+    },
+    select: { id: true, label: true },
+  });
+}
+/** The active kiosk for a device credential, in any organization. */
+export async function activeKiosk(deviceKey: string | undefined) {
+  if (!deviceKey) return null;
+  return db.device.findFirst({
+    where: { keyHash: digest(deviceKey, "device"), kind: "KIOSK", revokedAt: null, expiresAt: { gt: new Date() } },
+    select: { id: true },
+  });
+}

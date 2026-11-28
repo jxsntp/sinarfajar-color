@@ -16,6 +16,10 @@ export const studyInput = z.object({
     split: z.enum(["development", "holdout"]),
     lightnessBand: z.enum(["lower", "middle", "higher", "unavailable"]),
     contrast: contrast.nullable(), repeat: contrast.nullable(), skinAB: features.nullable(),
+    // Approved derived face measurements by dotted key, for example "geometry.jawAngle" or "lips.contrast".
+    // Recorded for later candidate models; the current evaluation does not use them.
+    face: z.record(z.string().regex(/^[a-zA-Z]+(\.[a-zA-Z]+){0,3}$/), z.number().min(-1000).max(1000))
+      .refine((value) => Object.keys(value).length <= 64, "At most 64 face measurements").nullable().optional(),
     trials: z.array(z.object({
       block: z.enum(["tone", "hue"]),
       left: z.string(), right: z.string(), outcome: z.enum(outcomes),

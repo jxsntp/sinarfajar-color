@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { identity } from "../support/identity";
 import { issue, digest } from "@/lib/credentials";
 import { startSession, issueReport } from "@/domains/sessions/service";
-import { cameraNotice, localCameraTrial } from "@/domains/color-analysis/stations";
+import { cameraNotice } from "@/domains/color-analysis/stations";
 import { paletteVersion } from "@/domains/color-analysis/swatches";
 import { rankTrial } from "@/domains/color-analysis/trial-ranking";
 
@@ -49,8 +49,7 @@ test("publishes catalog photos and shows one visual pick per jewelry category af
   const consent = await db.consent.create({
     data: { organizationId: org.id, sessionId: session.sessionId, granted: true, purpose: "local_camera", version: cameraNotice },
   });
-  const station = localCameraTrial(host, "development")!;
-  const result = rankTrial([56, 18, 26], station.calibration!, paletteVersion, { tones: ["pale", "dull"], quality: "stable" })!;
+  const result = rankTrial([56, 18, 26], paletteVersion, { tones: ["pale", "dull"], quality: "stable" })!;
   const token = issue("report");
   const report = await issueReport(session.credential, { result, reportCredential: token, cameraConsentId: consent.id }, host);
   const phone = await browser.newPage({ viewport: { width: 390, height: 844 } });

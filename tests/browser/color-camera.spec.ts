@@ -47,7 +47,8 @@ test("research capture loads a same-origin model and falls back locally on facel
   await page.getByRole("button", { name: "Periksa pencahayaan" }).click();
   expect((await model).ok()).toBe(true);
   await expect(page.getByText("Wajah belum terdeteksi. Posisikan wajah di tengah atau lanjutkan secara manual.")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Biru kobalt/ })).toBeVisible();
+  // The manual comparison takes over, starting with the gold-against-silver step.
+  await expect(page.getByRole("button", { name: /Emas kuning/ })).toBeVisible();
   await expect.poll(() => page.evaluate(() =>
     (window as Window & { fixtureTrack?: MediaStreamTrack }).fixtureTrack?.readyState)).toBe("ended");
 });

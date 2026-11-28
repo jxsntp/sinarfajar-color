@@ -44,7 +44,7 @@ flowchart LR
 
 ### 2. Facial contrast
 
-Compute the mean L\* for the usable pixels in each brow and its nearby skin region. Calculate the contrast for each side of each usable frame and take the median of those measurements over several accepted frames. Treat regions with an invalid or near-zero denominator as unusable. Set frame count and stability tolerance from the bench and feasibility results.
+Compute the mean L\* for the usable pixels in each brow and its nearby skin region. The current kiosk method (`contrast-rule-fixture-v2`) uses the darkest half of brow pixels and a trimmed median for the skin strip. See [Decisions](DECISIONS.md#2026-11-27--robust-camera-regions-and-gray-card-balancing). Calculate the contrast for each side of each usable frame and take the median of those measurements over several accepted frames. Treat regions with an invalid or near-zero denominator as unusable. Set frame count and stability tolerance from the bench and feasibility results.
 
 ```text
 regionContrast = abs(meanSkinL - meanBrowL) / (meanSkinL + meanBrowL)

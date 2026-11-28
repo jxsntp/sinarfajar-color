@@ -14,6 +14,9 @@ export default async function Admin() {
       <Link className="text-button" href="/admin/catalog">
         Manage product catalog
       </Link>
+      <Link className="text-button" href="/admin/calibration">
+        Calibrate a station camera
+      </Link>
       <dl>
         <dt>Active catalog products</dt>
         <dd>{count}</dd>

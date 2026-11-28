@@ -32,7 +32,7 @@ export const snapshotInput = z.array(z.object({
   id: revision, label: z.object({ en: z.string(), id: z.string() }),
   display: z.string().regex(/^#[0-9a-f]{6}$/i), family: z.enum(["red","yellow","green","blue","violet","neutral"]),
   tone: toneInput.nullable(),
-})).max(23);
+})).max(64);
 const savedTrial = z.object({
   kind: z.literal("camera-trial"), swatches: snapshotInput.length(3), gold: suggestedGold,
 }).strict();

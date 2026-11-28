@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   palettes,
   type experience,
 } from "@/domains/sessions/palette";
+import { CameraVideo, useCamera } from "./camera-runtime";
 
 export type Quality =
   | "manual"
@@ -46,66 +47,39 @@ export function Camera({
   onQuality: (quality: Quality) => void;
   onStop: () => void;
 }) {
-  const video = useRef<HTMLVideoElement>(null);
-  const track = useRef<MediaStreamTrack | null>(null);
+  const video = useRef<HTMLVideoElement | null>(null);
   const gains = useRef([1, 1, 1]);
   const [status, setStatus] = useState<Quality>("unchecked");
-  const [controls, setControls] = useState<Partial<Record<Control, Range>>>({});
   const [calibrated, setCalibrated] = useState(false);
   const [controlError, setControlError] = useState(false);
+  const ended = useCallback(() => onQuality("unavailable"), [onQuality]);
+  const { stream, open, stop, exposure, holdExposure } = useCamera({ onEnded: ended, meterFace: true });
+  const track = stream?.getVideoTracks()[0];
+  const setVideo = useCallback((element: HTMLVideoElement | null) => { video.current = element; }, []);
   useEffect(() => {
     let disposed = false;
-    let stream: MediaStream | undefined;
-    const element = video.current;
-    async function connect() {
-      try {
-        const acquired = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "user",
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-          },
-          audio: false,
-        });
-        if (disposed || !element) {
-          acquired.getTracks().forEach((item) => item.stop());
-          return;
-        }
-        stream = acquired;
-        track.current = acquired.getVideoTracks()[0];
-        track.current.addEventListener("ended", () => { if (!disposed) onQuality("unavailable"); }, { once: true });
-        element.srcObject = acquired;
-        const caps = (track.current.getCapabilities?.() ?? {}) as Partial<
-          Record<Control, Range>
-        >;
-        const values = track.current.getSettings() as Partial<
-          Record<Control, number>
-        >;
-        setControls({
-          exposureCompensation: caps.exposureCompensation && {
-            ...caps.exposureCompensation,
-            initial: values.exposureCompensation,
-          },
-          colorTemperature: caps.colorTemperature && {
-            ...caps.colorTemperature,
-            initial: values.colorTemperature,
-          },
-        });
-      } catch {
-        if (!disposed) {
-          setStatus("unavailable");
-          onQuality("unavailable");
-        }
-      }
-    }
-    void connect();
-    return () => {
-      disposed = true;
-      stream?.getTracks().forEach((item) => item.stop());
-      track.current = null;
-      if (element) element.srcObject = null;
+    open().catch(() => {
+      if (disposed) return;
+      setStatus("unavailable");
+      onQuality("unavailable");
+    });
+    return () => { disposed = true; };
+  }, [open, onQuality]);
+  const controls = useMemo<Partial<Record<Control, Range>>>(() => {
+    if (!track) return {};
+    const caps = (track.getCapabilities?.() ?? {}) as Partial<Record<Control, Range>>;
+    const values = track.getSettings() as Partial<Record<Control, number>>;
+    return {
+      exposureCompensation: caps.exposureCompensation && {
+        ...caps.exposureCompensation,
+        initial: values.exposureCompensation,
+      },
+      colorTemperature: caps.colorTemperature && {
+        ...caps.colorTemperature,
+        initial: values.colorTemperature,
+      },
     };
-  }, [onQuality]);
+  }, [track]);
 
   function inspect(calibrate: boolean) {
     const source = video.current;
@@ -155,7 +129,7 @@ export function Camera({
         <>
           <p>{copy.guide}</p>
           <div className="camera-preview">
-            <video ref={video} autoPlay muted playsInline />
+            {stream && <CameraVideo stream={stream} videoRef={setVideo} />}
             <span className="face-guide" aria-hidden />
             <span className="gray-reference" aria-hidden />
             <span
@@ -198,6 +172,8 @@ export function Camera({
                   defaultValue={range.initial ?? (range.min + range.max) / 2}
                   onChange={(event) => {
                     const value = Number(event.target.value);
+                    // A hand-set exposure replaces face metering.
+                    if (key === "exposureCompensation") holdExposure();
                     const setting =
                       key === "colorTemperature"
                         ? {
@@ -205,7 +181,7 @@ export function Camera({
                             colorTemperature: value,
                           }
                         : { exposureCompensation: value };
-                    void track.current
+                    void track
                       ?.applyConstraints({
                         advanced: [setting as MediaTrackConstraintSet],
                       })
@@ -235,8 +211,9 @@ export function Camera({
           }
         </p>
       )}
+      {exposure === "limit" && <p role="status">{copy.exposureLimit}</p>}
       {controlError && <p role="alert">{copy.retake}</p>}
-      <button className="text-button" onClick={onStop}>
+      <button className="text-button" onClick={() => { stop(); onStop(); }}>
         {copy.cameraOff}
       </button>
     </section>

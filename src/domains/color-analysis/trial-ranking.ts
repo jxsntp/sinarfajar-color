@@ -1,7 +1,7 @@
 import { metalColors } from "../sessions/palette";
-import { pixelLab, type Calibration } from "./measurement";
+import { assumedSrgb, pixelLab } from "./measurement";
 import type { TrialResult } from "./result";
-import { paletteFor, type Lab, type Tone } from "./swatches";
+import { paletteFor, type ColorStyle, type Lab, type Tone } from "./swatches";
 
 const goldVariants = ["yellow", "rose", "white"] as const;
 const radians = (degrees: number) => degrees * Math.PI / 180;
@@ -30,14 +30,15 @@ export function harmony(first: Lab, second: Lab) {
     + hueEffect(first) + hueEffect(second);
 }
 export function rankTrial(
-  skin: Lab, calibration: Calibration, paletteVersion: string,
-  group: { tones: Tone[]; quality: TrialResult["quality"] },
+  skin: Lab, paletteVersion: string,
+  group: { tones: Tone[]; quality: TrialResult["quality"] }, style: ColorStyle = "both",
 ): TrialResult | undefined {
   const score = (hex: string) => {
     const rgb: Lab = [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16)) as unknown as Lab;
-    return harmony(skin, pixelLab(rgb, calibration));
+    // Swatches and metal samples are on-screen sRGB colors, whatever camera measured the skin.
+    return harmony(skin, pixelLab(rgb, assumedSrgb));
   };
-  const swatches = paletteFor(paletteVersion, group.tones).filter((swatch) => swatch.tone !== null);
+  const swatches = paletteFor(paletteVersion, group.tones, style).filter((swatch) => swatch.tone !== null);
   if (!skin.every(Number.isFinite) || swatches.length < 3) return;
   const swatchIds = swatches.map(({ id, display }) => ({ id, score: score(display) }))
     .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).slice(0, 3).map(({ id }) => id);

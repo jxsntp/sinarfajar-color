@@ -3,9 +3,21 @@ export type Tone = (typeof tones)[number];
 export const hueFamilies = ["red", "yellow", "green", "blue", "violet", "neutral"] as const;
 export type HueFamily = (typeof hueFamilies)[number];
 export type Lab = readonly [number, number, number];
-export const paletteVersion = "sf-drapes-fixture-v1";
-export const methodVersion = "contrast-rule-fixture-v1";
-export const manualMethod = "manual-drape-v1";
+/** The original 20 drapes and 3 neutrals. Kept for existing reports, catalog references and study plans. */
+export const legacyPaletteVersion = "sf-drapes-fixture-v1";
+/** The original library plus style-tagged additions. */
+export const paletteVersion = "sf-drapes-fixture-v2";
+export const colorStyles = ["both", "feminine", "masculine"] as const;
+/** A customer-chosen style direction. `both` is the original library. */
+export type ColorStyle = (typeof colorStyles)[number];
+export const styleLabels: Record<ColorStyle, { en: string; id: string }> = {
+  both: { en: "All styles", id: "Semua gaya" },
+  feminine: { en: "Feminine", id: "Feminin" },
+  masculine: { en: "Masculine", id: "Maskulin" },
+};
+export const methodVersion = "contrast-rule-fixture-v2";
+// v2: analyst-order comparisons (depth, clarity, then the leaders) with a metal step. v1 used a fixed sequence.
+export const manualMethod = "manual-drape-v2";
 export const toneLabels: Record<Tone, { en: string; id: string }> = {
   vivid: { en: "Vivid", id: "Cerah" },
   dark: { en: "Dark", id: "Gelap" },
@@ -27,6 +39,8 @@ export type Swatch = {
   tone: Tone | null;
   reference: MeasuredReference | null;
   status: "fixture" | "approved";
+  /** Style sets that include this swatch. */
+  styles: readonly ColorStyle[];
 };
 const rows = {
   vivid: [
@@ -67,38 +81,78 @@ function fixture(
   [id, en, idLabel, display]: readonly [string, string, string, string],
   family: HueFamily,
   tone: Tone | null,
+  styles: readonly ColorStyle[] = ["both"],
 ): Swatch {
   // The display values are illustrative sRGB. Physical measurements must be entered separately.
-  return { id, label: { en, id: idLabel }, display, family, tone, reference: null, status: "fixture" };
+  return { id, label: { en, id: idLabel }, display, family, tone, reference: null, status: "fixture", styles };
 }
-const fixtureSwatches = [
+const originalSwatches = [
   ...tones.flatMap((tone) => rows[tone].map((row, i) => fixture(row, hueFamilies[i], tone))),
   ...neutralRows.map((row) => fixture(row, "neutral", null)),
 ];
-const registry: Record<string, readonly Swatch[]> = { [paletteVersion]: fixtureSwatches };
+// Existing swatches that also belong to a style set.
+const originalStyles: Record<string, ColorStyle[]> = {
+  orchid: ["feminine"], marigold: ["feminine"], aubergine: ["feminine"], oxblood: ["feminine"],
+  "shell-pink": ["feminine"], lavender: ["feminine"], buttercream: ["feminine"], mint: ["feminine"],
+  "dusty-rose": ["feminine"], heather: ["feminine"], "muted-ochre": ["feminine"],
+  cobalt: ["masculine"], emerald: ["masculine"], carmine: ["masculine"], "midnight-blue": ["masculine"],
+  pine: ["masculine"], "dark-ochre": ["masculine"], "mist-blue": ["masculine"], "steel-blue": ["masculine"],
+  sage: ["masculine"], "soft-white": ["feminine", "masculine"], taupe: ["feminine", "masculine"],
+  charcoal: ["masculine"],
+};
+type StyledRow = readonly [string, string, string, string, HueFamily, Tone | null];
+const styledRows: Record<Exclude<ColorStyle, "both">, StyledRow[]> = {
+  feminine: [
+    ["fuchsia", "Fuchsia", "Merah muda fuchsia", "#c8247e", "red", "vivid"],
+    ["coral-red", "Coral red", "Merah koral", "#e8494a", "red", "vivid"],
+    ["turquoise", "Turquoise", "Biru toska", "#1aa5b0", "blue", "vivid"],
+    ["deep-teal", "Deep teal", "Teal gelap", "#1d4a52", "blue", "dark"],
+    ["plum-rose", "Plum rose", "Mawar plum", "#6e2f4f", "violet", "dark"],
+    ["chocolate", "Chocolate", "Cokelat", "#5a3628", "yellow", "dark"],
+    ["blush-peach", "Blush peach", "Persik lembut", "#f6cdb8", "red", "pale"],
+    ["mauve", "Mauve", "Ungu mauve", "#a8808f", "violet", "dull"],
+    ["soft-terracotta", "Soft terracotta", "Terakota lembut", "#b9735c", "red", "dull"],
+    ["champagne", "Champagne", "Sampanye", "#e9dcc3", "neutral", null],
+  ],
+  masculine: [
+    ["teal", "Teal", "Biru teal", "#127a80", "blue", "vivid"],
+    ["burnt-orange", "Burnt orange", "Oranye bata", "#cc5a1e", "yellow", "vivid"],
+    ["burgundy", "Burgundy", "Merah burgundi", "#6b1f2c", "red", "dark"],
+    ["espresso", "Espresso", "Cokelat espreso", "#4a3328", "yellow", "dark"],
+    ["pale-sage", "Pale sage", "Sage pucat", "#d3dfc8", "green", "pale"],
+    ["stone", "Stone", "Batu", "#ddd5c6", "yellow", "pale"],
+    ["ecru", "Ecru", "Ekru", "#ede4cf", "yellow", "pale"],
+    ["light-gray", "Light gray", "Abu-abu muda", "#d6d7d9", "neutral", "pale"],
+    ["khaki", "Khaki", "Khaki", "#a59a72", "yellow", "dull"],
+    ["slate", "Slate", "Biru slate", "#6b7a85", "blue", "dull"],
+    ["navy-gray", "Navy gray", "Abu navy", "#4b5363", "neutral", null],
+  ],
+};
+const styledSwatches = [
+  ...originalSwatches.map((swatch) => ({ ...swatch, styles: ["both", ...(originalStyles[swatch.id] ?? [])] as const })),
+  ...(Object.entries(styledRows) as [ColorStyle, StyledRow[]][]).flatMap(([style, list]) =>
+    list.map(([id, en, idLabel, display, family, tone]) => fixture([id, en, idLabel, display], family, tone, [style]))),
+];
+const registry: Record<string, readonly Swatch[]> = {
+  [legacyPaletteVersion]: originalSwatches,
+  [paletteVersion]: styledSwatches,
+};
+// A later revision keeps every swatch ID of its predecessors with the same display value.
+const lineage: Record<string, readonly string[]> = { [paletteVersion]: [legacyPaletteVersion] };
 export const swatchesFor = (version: string) => Object.hasOwn(registry, version) ? registry[version] : undefined;
 export const swatchFor = (version: string, id: string) => swatchesFor(version)?.find((swatch) => swatch.id === id);
-export function paletteFor(version: string, groups: Tone[]) {
-  return swatchesFor(version)?.filter(({ tone }) => tone === null || groups.includes(tone)) ?? [];
+/** True when two versioned references name the same swatch. */
+export function sameSwatch(a: { version: string; id: string }, b: { version: string; id: string }) {
+  return a.id === b.id && (a.version === b.version || Boolean(lineage[a.version]?.includes(b.version)) ||
+    Boolean(lineage[b.version]?.includes(a.version)));
+}
+/** Swatches for the tone groups plus neutrals, limited to one style set. */
+export function paletteFor(version: string, groups: Tone[], style: ColorStyle = "both") {
+  return swatchesFor(version)?.filter(({ tone, styles }) =>
+    (tone === null || groups.includes(tone)) && styles.includes(style)) ?? [];
 }
 export const paletteSnapshot = (swatches: readonly Swatch[]) =>
   swatches.map(({ id, label, display, family, tone }) => ({ id, label, display, family, tone }));
-
-export function comparableDrapes(version: string) {
-  const pairs: [Swatch, Swatch][] = [];
-  const library = swatchesFor(version) ?? [];
-  // The fixture sequence presents every tone three times across distinct families.
-  const trials: [Tone, Tone, HueFamily][] = [
-    ["vivid", "dull", "blue"], ["pale", "dark", "green"], ["dark", "dull", "red"],
-    ["pale", "vivid", "violet"], ["dull", "pale", "yellow"], ["vivid", "dark", "red"],
-  ];
-  for (const [a, b, family] of trials) {
-    const left = library.find((swatch) => swatch.family === family && swatch.tone === a);
-    const right = library.find((swatch) => swatch.family === family && swatch.tone === b);
-    if (left && right) pairs.push([left, right]);
-  }
-  return pairs;
-}
 
 export function drapeChoice(votes: (Tone | null)[]): Tone[] {
   const scores = tones.map((tone) => ({ tone, votes: votes.filter((vote) => vote === tone).length }));

@@ -1,10 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { HttpError } from "@/lib/http";
 import type { SessionScope } from "../analytics/events";
-import { cameraNotice, localCameraTrial, stationFor, trialMethod } from "./stations";
+import { cameraNotice, currentStation, localCameraTrial, stationFor, trialMethod } from "./stations";
 import { env } from "@/lib/env";
-import { manualMethod, paletteFor, paletteSnapshot, type Tone } from "./swatches";
+import { manualMethod, paletteFor, paletteSnapshot, type ColorStyle, type Tone } from "./swatches";
 import { toneInput, type ColorResultInput } from "./result";
+import type { EngineCheck, MetalChoice } from "./draping";
 import { palettes } from "../sessions/palette";
 
 export async function resolveColorResult(
@@ -13,11 +14,23 @@ export async function resolveColorResult(
   input: ColorResultInput,
   cameraConsentId?: string,
   host?: string | null,
+  style: ColorStyle = "both",
+  metal?: MetalChoice,
+  check?: EngineCheck,
 ) {
   const station = stationFor(session.deviceId);
-  const base = { profile: null, source: "MANUAL" as const, methodVersion: manualMethod };
+  const trialStation = localCameraTrial(host ?? null, env().APP_ENV, currentStation(session.deviceId));
+  // A confirmation belongs to a camera trial; an overruled trial ends in a comparison result instead.
+  if (check && (!trialStation || station.mode !== "manual" || (check === "overruled") === (input.kind === "trial")))
+    throw new HttpError(400, "invalid_engine_check");
+  // A trial suggests its own metal, so the comparison's metal step does not apply.
+  if (metal && input.kind === "trial") throw new HttpError(400, "invalid_metal");
+  const base = {
+    profile: null, source: "MANUAL" as const, methodVersion: manualMethod, colorStyle: style,
+    metal: metal ?? null, engineCheck: check ?? null,
+  };
   if (input.kind === "uncertain") {
-    const neutrals = station.paletteVersion ? paletteFor(station.paletteVersion, []) : [];
+    const neutrals = station.paletteVersion ? paletteFor(station.paletteVersion, [], style) : [];
     return {
       ...base, quality: "uncertain", uncertain: true, uncertainty: input.reason,
       palette: neutrals.length ? neutrals.map(({ display }) => display) : palettes.uncertain.colors,
@@ -27,7 +40,7 @@ export async function resolveColorResult(
   if (station.paletteVersion !== input.paletteVersion)
     throw new HttpError(400, "palette_revision_unavailable");
   let toneGroups: Tone[];
-  if (input.kind === "trial" && (station.mode !== "manual" || !localCameraTrial(host ?? null, env().APP_ENV)))
+  if (input.kind === "trial" && (station.mode !== "manual" || !trialStation))
     throw new HttpError(403, "trial_unavailable");
   if (input.kind === "automatic" && (station.mode !== "automatic" || station.methodVersion !== input.methodVersion ||
       station.calibration?.revision !== input.calibrationVersion))
@@ -45,13 +58,13 @@ export async function resolveColorResult(
   }
   if (input.kind === "manual") toneGroups = [toneInput.parse(input.paletteId.slice(6))];
   else toneGroups = input.tones;
-  const swatches = paletteFor(input.paletteVersion, toneGroups);
+  const swatches = paletteFor(input.paletteVersion, toneGroups, style);
   if (!swatches.length) throw new HttpError(400, "invalid_palette");
   if (input.kind === "trial") {
     const ranked = input.swatchIds.flatMap((id) => swatches.filter((swatch) => swatch.id === id && swatch.tone !== null));
     if (ranked.length !== 3) throw new HttpError(400, "invalid_palette");
     return {
-      ...base, source: "AUTOMATIC" as const, methodVersion: trialMethod, calibrationVersion: "assumed-srgb-d65",
+      ...base, source: "AUTOMATIC" as const, methodVersion: trialMethod, calibrationVersion: trialStation?.calibration?.revision ?? null,
       toneGroups, paletteVersion: input.paletteVersion, quality: "experimental",
       uncertain: input.quality === "mixed",
       palette: ranked.map(({ display }) => display),

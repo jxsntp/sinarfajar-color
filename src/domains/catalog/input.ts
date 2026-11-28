@@ -56,7 +56,7 @@ export const preferenceInput = z
     selectedSwatchVersion: z.string().regex(/^[a-z0-9-]{1,64}$/).optional(),
     selectedSwatchIds: z.array(z.string().regex(/^[a-z0-9-]{1,64}$/)).max(6)
       .transform((ids) => [...new Set(ids)].sort()).optional(),
-    removedSwatchIds: z.array(z.string().regex(/^[a-z0-9-]{1,64}$/)).max(23)
+    removedSwatchIds: z.array(z.string().regex(/^[a-z0-9-]{1,64}$/)).max(64)
       .transform((ids) => [...new Set(ids)].sort()).optional(),
     accentFamily: z.enum(hueFamilies).optional(),
     requiredGold: tag.optional(),

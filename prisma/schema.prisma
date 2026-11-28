@@ -383,6 +383,9 @@ model ColorAnalysis {
   paletteVersion  String?
   calibrationVersion String?
   paletteSnapshot Json?
+  colorStyle      String?
+  metal           String?
+  engineCheck     String?
   uncertainty     String?
   methodVersion   String
   quality         String

@@ -1,7 +1,15 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CameraSettings, Station } from "@/domains/color-analysis/stations";
+import type { ColorStyle } from "@/domains/color-analysis/swatches";
 import type { CaptureResponse } from "./capture.worker";
+import {
+  exposureStep, faceMeter, regionLuma, type ExposureCapabilities, type ExposureSettings,
+} from "@/domains/color-analysis/exposure";
+
+/** Face-metered exposure state: off, steering, settled in the band, or at the camera's limit. */
+export type ExposureState = "off" | "adjusting" | "ok" | "limit";
+const meterInterval = 500;
 
 export function CameraVideo({ stream, videoRef }: {
   stream: MediaStream;
@@ -18,8 +26,16 @@ export function CameraVideo({ stream, videoRef }: {
   return <video ref={ref} autoPlay muted playsInline aria-hidden="true" />;
 }
 
-export function useCamera() {
+export function useCamera({ onEnded, meterFace = false }: {
+  onEnded?: () => void;
+  /** Steer exposure from the face guide region when the station has not locked camera settings. */
+  meterFace?: boolean;
+} = {}) {
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [exposure, setExposure] = useState<ExposureState>("off");
+  const metering = useRef(false);
+  const ended = useRef(onEnded);
+  useEffect(() => { ended.current = onEnded; }, [onEnded]);
   const media = useRef<MediaStream | null>(null);
   const operation = useRef<AbortController | null>(null);
   const generation = useRef(0);
@@ -30,7 +46,46 @@ export function useCamera() {
     media.current?.getTracks().forEach((track) => track.stop());
     media.current = null;
   }, []);
-  const stop = useCallback(() => { release(); setStream(null); }, [release]);
+  const stop = useCallback(() => { release(); metering.current = false; setStream(null); setExposure("off"); }, [release]);
+  /** Stops face metering, for example when staff set exposure by hand. */
+  const holdExposure = useCallback(() => { metering.current = false; setExposure("off"); }, []);
+
+  // Samples the face region and nudges exposure until the stream changes or metering is held.
+  const meter = useCallback(async (next: MediaStream, version: number) => {
+    const track = next.getVideoTracks()[0];
+    const caps = (track.getCapabilities?.() ?? {}) as ExposureCapabilities;
+    const source = document.createElement("video");
+    source.muted = true;
+    source.playsInline = true;
+    source.srcObject = next;
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 48;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    metering.current = true;
+    setExposure("adjusting");
+    try {
+      await source.play().catch(() => {});
+      while (context && metering.current && version === generation.current && track.readyState === "live") {
+        await new Promise((resolve) => setTimeout(resolve, meterInterval));
+        // A capture needs stable exposure across its frames.
+        if (operation.current || source.readyState < 2) continue;
+        context.drawImage(source, 0, 0, canvas.width, canvas.height);
+        const [x, y, w, h] = faceMeter.map((value, i) => Math.round(value * (i % 2 ? canvas.height : canvas.width)));
+        const step = exposureStep(regionLuma(context.getImageData(x, y, w, h).data), caps,
+          track.getSettings() as ExposureSettings);
+        if (!metering.current || version !== generation.current) break;
+        if (step.kind === "adjust") {
+          setExposure("adjusting");
+          await track.applyConstraints({ advanced: [step.constraints as MediaTrackConstraintSet] }).catch(() => {});
+        } else setExposure(step.kind);
+      }
+    } finally {
+      source.srcObject = null;
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+  }, []);
   useEffect(() => {
     window.addEventListener("pagehide", stop);
     return () => { window.removeEventListener("pagehide", stop); release(); };
@@ -75,11 +130,18 @@ export function useCamera() {
       return;
     }
     media.current = next;
-    next.getVideoTracks().forEach((track) => track.addEventListener("ended", stop, { once: true }));
+    // A calibrated station locks exposure; only an unlocked camera is steered from the face.
+    if (meterFace && camera?.exposureTime === undefined && camera?.exposureCompensation === undefined)
+      void meter(next, version);
+    next.getVideoTracks().forEach((track) => track.addEventListener("ended", () => {
+      if (version !== generation.current) return;
+      stop();
+      ended.current?.();
+    }, { once: true }));
     setStream(next);
-  }, [stop]);
+  }, [stop, meter, meterFace]);
 
-  async function capture(video: HTMLVideoElement, station: Station) {
+  async function capture(video: HTMLVideoElement, station: Station, style: ColorStyle = "both") {
     if (!media.current || operation.current) throw new Error("Capture unavailable");
     const controller = new AbortController();
     operation.current = controller;
@@ -102,7 +164,7 @@ export function useCamera() {
       worker.postMessage(message, transfer);
     });
     try {
-      await exchange({ kind: "init", station });
+      await exchange({ kind: "init", station, style });
       const until = performance.now() + 3000;
       let lastTime = -1;
       while (!signal.aborted && performance.now() < until) {
@@ -121,5 +183,5 @@ export function useCamera() {
       if (operation.current === controller) stop();
     }
   }
-  return { stream, open, stop, capture };
+  return { stream, open, stop, capture, exposure, holdExposure };
 }

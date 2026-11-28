@@ -10,6 +10,8 @@ import { writeEvent } from "../analytics/events";
 import { assignExperiment } from "../experiments/assign";
 import { cameraNotice, stationFor } from "../color-analysis/stations";
 import { resultInput } from "../color-analysis/result";
+import { colorStyles } from "../color-analysis/swatches";
+import { metalChoices } from "../color-analysis/draping";
 import { resolveColorResult } from "../color-analysis/report-result";
 
 export async function startSession(deviceKey: string) {
@@ -125,6 +127,11 @@ export const paletteInput = z
   .strict();
 const versionedReportInput = z.object({
   result: resultInput,
+  style: z.enum(colorStyles).optional(),
+  /** The metal chosen in the comparison's first step. */
+  metal: z.enum(metalChoices).optional(),
+  /** Whether the comparison confirmed the camera trial's picks. Only with the local trial. */
+  check: z.enum(["confirmed", "split", "overruled"]).optional(),
   assisted: paletteInput.shape.assisted,
   reportCredential: paletteInput.shape.reportCredential,
   cameraConsentId: paletteInput.shape.cameraConsentId,
@@ -181,7 +188,7 @@ export async function issueReport(
         where: { id: session.id },
         data: { assisted },
       });
-    const analysis = "result" in input ? await resolveColorResult(tx, session, input.result, cameraConsentId, host) : {
+    const analysis = "result" in input ? await resolveColorResult(tx, session, input.result, cameraConsentId, host, input.style, input.metal, input.check) : {
       profile: input.profile, palette: input.palette, source: "MANUAL" as const,
       methodVersion: "manual-draping-v2", quality, uncertain: input.profile === "uncertain",
     };

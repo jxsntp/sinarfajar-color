@@ -44,18 +44,27 @@ export function Swatches({
     </ul>
   );
 }
-export function NamedPalette({ swatches, locale }: { swatches: PaletteSnapshot; locale: string }) {
+/** Named swatches. `featured` IDs (the customer's picks or ranked colors) are shown first and larger. */
+export function NamedPalette({ swatches, locale, featured = [] }: {
+  swatches: PaletteSnapshot; locale: string; featured?: readonly string[];
+}) {
   const copy = experience(locale);
   const lang = locale === "en-US" ? "en" : "id";
-  return [false, true].map((neutral) => {
-    const swatchGroup = swatches.filter((swatch) => (swatch.tone === null) === neutral);
-    if (!swatchGroup.length) return null;
-    return <section key={neutral ? "neutral" : "colors"}>
-      <h3>{neutral ? copy.neutrals : copy.shades}</h3>
-      <ul className="labeled-swatches">{swatchGroup.map(({ id, label, display }) =>
+  const chosen = new Set(featured);
+  const lead = swatches.filter(({ id, tone }) => tone !== null && chosen.has(id));
+  const groups = [
+    { key: "featured", title: copy.featured, items: lead, large: true },
+    { key: "colors", title: lead.length ? copy.moreShades : copy.shades,
+      items: swatches.filter(({ id, tone }) => tone !== null && !chosen.has(id)), large: false },
+    { key: "neutral", title: copy.neutrals, items: swatches.filter(({ tone }) => tone === null), large: false },
+  ];
+  return groups.map(({ key, title, items, large }) => items.length ? (
+    <section key={key}>
+      <h3>{title}</h3>
+      <ul className={"labeled-swatches" + (large ? " featured" : "")}>{items.map(({ id, label, display }) =>
         <li key={id}><span aria-hidden style={{ background: display }} />{label[lang]}</li>)}</ul>
-    </section>;
-  });
+    </section>
+  ) : null);
 }
 export function Gold({ locale, suggested }: { locale: string; suggested?: "yellow" | "rose" | "white" }) {
   const text = experience(locale);
@@ -71,5 +80,15 @@ export function Gold({ locale, suggested }: { locale: string; suggested?: "yello
         ))}
       </ul>
     </section>
+  );
+}
+/** An arch of vertical color bands built from the customer's palette, picks first. */
+export function PaletteArch({ colors }: { colors: readonly string[] }) {
+  const bands = colors.slice(0, 7);
+  if (!bands.length) return null;
+  return (
+    <div className="palette-arch" aria-hidden>
+      {bands.map((color, index) => <i key={color + index} style={{ background: color }} />)}
+    </div>
   );
 }

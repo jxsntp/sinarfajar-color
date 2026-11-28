@@ -4,16 +4,20 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import QRCode from "qrcode";
 import Image from "next/image";
 import type { messages } from "@/domains/organizations/branding";
-import { experience, palettes, type Tone } from "@/domains/sessions/palette";
+import { experience, metalColors, palettes, type Tone } from "@/domains/sessions/palette";
 import { visibleEvent, recoverEvents } from "@/lib/client-events";
 import { Button } from "@/components/ui/button";
 import { Camera, type Quality } from "./camera";
-import { Draping, NamedPalette, Swatches, Gold } from "@/components/palette";
-import { comparableDrapes, drapeChoice, paletteFor, paletteSnapshot, swatchFor, toneLabels, type Tone as DrapeTone } from "@/domains/color-analysis/swatches";
+import { Draping, NamedPalette, PaletteArch, Swatches, Gold } from "@/components/palette";
+import { colorStyles, drapeChoice, paletteFor, paletteSnapshot, styleLabels, swatchFor, toneLabels, type ColorStyle, type Tone as DrapeTone } from "@/domains/color-analysis/swatches";
 import type { Station } from "@/domains/color-analysis/stations";
 import type { CaptureFailure } from "@/domains/color-analysis/measurement";
-import type { ColorResultInput } from "@/domains/color-analysis/result";
+import type { ColorResultInput, TrialResult } from "@/domains/color-analysis/result";
+import {
+  checkDrapes, drapeDimension, drapeSteps, engineCheck, metalChoices, nextDrapes, type EngineCheck, type MetalChoice,
+} from "@/domains/color-analysis/draping";
 import { StudyCamera } from "./study-camera";
+import { DrapeHero, type DrapeOption } from "./drape-hero";
 
 type Session = {
   sessionId: string;
@@ -75,6 +79,15 @@ export function Studio({
   const [step, setStep] = useState<"privacy" | "compare" | "result">("privacy");
   const [tone, choose] = useState<Tone | null>(null);
   const [votes, setVotes] = useState<(DrapeTone | null)[]>([]);
+  // Swatches the customer chose during comparison, shown first in the result.
+  const [picked, setPicked] = useState<string[]>([]);
+  // Gold against silver runs first. Undefined until answered, null for "both".
+  const [metal, setMetal] = useState<MetalChoice | null>();
+  // A camera trial suggestion waiting for the comparison to confirm or overrule it.
+  const [proposal, setProposal] = useState<TrialResult | null>(null);
+  const [checks, setChecks] = useState<(string | null)[]>([]);
+  const [check, setCheck] = useState<EngineCheck>();
+  const [style, setStyle] = useState<ColorStyle>("both");
   const [result, setResult] = useState<ColorResultInput | null>(null);
   const [attempts, setAttempts] = useState(0);
   const [researchReady, setResearchReady] = useState(false);
@@ -98,18 +111,35 @@ export function Studio({
   const began = useRef(false);
   const version = session?.station.paletteVersion;
   const cameraStation = trial ? trialStation : session?.station;
-  const pairs = useMemo(() => version ? comparableDrapes(version) : [], [version]);
-  const pair = pairs[votes.length];
   const lang = locale === "en-US" ? "en" : "id";
+  const checkPairs = useMemo(() => proposal ? checkDrapes(proposal, style) : [], [proposal, style]);
+  const checking = proposal !== null && checks.length < checkPairs.length;
+  const pair = !version ? undefined : checking ? checkPairs[checks.length] : metal === undefined ? undefined : nextDrapes(version, votes);
+  const asOption = (swatch: (typeof checkPairs)[number][number]): DrapeOption =>
+    ({ id: swatch.id, name: swatch.label[lang], note: swatch.tone ? toneLabels[swatch.tone][lang] : undefined, display: swatch.display });
+  // The current comparison: the camera check, the metal step, or the analyst sequence.
+  const options: DrapeOption[] | undefined = !version || step !== "compare" ? undefined
+    : pair ? pair.map(asOption)
+    : !checking && metal === undefined && !(proposal && check !== "overruled")
+      ? metalChoices.map((choice) => ({ id: "metal-" + choice, name: copy.metals[choice === "yellow" ? 0 : 2],
+          display: metalColors[choice === "yellow" ? 0 : 2] }))
+      : undefined;
+  const totalSteps = checking ? checkPairs.length : 1 + drapeSteps;
+  const stepIndex = checking ? checks.length : metal === undefined ? 0 : 1 + votes.length;
+  const stepLabel = checking ? copy.dimensions.check : metal === undefined ? copy.dimensions.metal
+    : copy.dimensions[drapeDimension(votes.length)];
+  // Only someone who can see the face, in the camera preview or with physical drapes, can judge the effect.
+  const question = camera ? copy.lookQuestion : assisted ? copy.staffQuestion : copy.preferenceQuestion;
   const groups = result && "tones" in result
     ? result.tones : result?.kind === "manual" ? [result.paletteId.slice(6) as DrapeTone] : [];
   const named = result?.kind === "trial"
     ? paletteSnapshot(result.swatchIds.flatMap((id) => swatchFor(result.paletteVersion, id) ?? []))
-    : version && result ? paletteSnapshot(paletteFor(version, groups)) : [];
-  const headingText = result?.kind === "trial" ? copy.trialPalette : groups.length
+    : version && result ? paletteSnapshot(paletteFor(version, groups, style)) : [];
+  const headingText = result?.kind === "trial" ? copy.trialPalette + (check === "confirmed" ? " · " + copy.confirmed : "") : groups.length
     ? (groups.length > 1 ? copy.mixed : result?.kind === "automatic" ? copy.automatic : copy.own)
       + " · " + groups.map((group) => toneLabels[group][lang]).join(" / ")
     : !tone || tone === "uncertain" ? t.uncertain : copy.own + " · " + t[tone];
+  const styledHeading = version && style !== "both" ? headingText + " · " + styleLabels[style][lang] : headingText;
   const markStarted = useCallback(() => {
     if (!session || began.current) return;
     began.current = true;
@@ -118,7 +148,7 @@ export function Studio({
   const reportQuality = useCallback((value: Quality) => {
     if (value === "unavailable") setCamera(false);
     setQuality(value);
-  }, []);
+  }, [setCamera]);
   const studyFailed = useCallback((reason?: CaptureFailure) => {
     setCaptureFailure(reason);
     reportQuality("unavailable");
@@ -142,6 +172,12 @@ export function Studio({
     began.current = false;
     choose(null);
     setVotes([]);
+    setPicked([]);
+    setMetal(undefined);
+    setProposal(null);
+    setChecks([]);
+    setCheck(undefined);
+    setStyle("both");
     setResult(null);
     setAttempts(0);
     setResearchReady(false);
@@ -165,7 +201,7 @@ export function Studio({
     return () => { window.clearInterval(timer); window.removeEventListener("online", ping); };
   }, [connected]);
   useEffect(() => {
-    heading.current?.focus();
+    heading.current?.focus({ preventScroll: true });
   }, [session, step]);
   useEffect(() => {
     if (!session) return;
@@ -325,12 +361,31 @@ export function Studio({
     setCamera(false);
     setStep("result");
   }
-  function compareDrapes(vote: DrapeTone | null) {
+  /** Records one comparison. `id` is the chosen option, null when both look the same. */
+  function compareDrapes(id: string | null) {
     if (!version) return;
     markStarted();
-    const next = [...votes, vote];
+    if (checking && proposal) {
+      const next = [...checks, id];
+      setChecks(next);
+      if (next.length < checkPairs.length) return;
+      const outcome = engineCheck(proposal, next);
+      setCheck(outcome);
+      // Overruled: keep the preview on and continue with the full analyst sequence.
+      if (outcome === "overruled") return;
+      reveal(proposal);
+      handoff(false, proposal, outcome);
+      return;
+    }
+    if (metal === undefined) {
+      setMetal(id ? id.slice(6) as MetalChoice : null);
+      return;
+    }
+    const swatch = id ? pair?.find((option) => option.id === id) : undefined;
+    if (swatch) setPicked((current) => [...current, swatch.id]);
+    const next: (DrapeTone | null)[] = [...votes, swatch?.tone ?? null];
     setVotes(next);
-    if (next.length !== pairs.length) { setResult(null); return; }
+    if (next.length !== drapeSteps) { setResult(null); return; }
     const selected = drapeChoice(next);
     reveal(selected.length === 1
       ? { kind: "manual", paletteId: "drape-" + selected[0], paletteVersion: version }
@@ -338,11 +393,14 @@ export function Studio({
         : { kind: "uncertain", reason: "no_clear_match" });
   }
 
-  function handoff(recover = false, analysis = result) {
+  function handoff(recover = false, analysis = result, outcome = check) {
     if (!session || (!analysis && !tone)) return;
     pendingReport.current ??= reportKey();
     const payload = analysis
-      ? { result: analysis, reportCredential: pendingReport.current, cameraConsentId: consent, assisted }
+      ? {
+          result: analysis, style, reportCredential: pendingReport.current, cameraConsentId: consent, assisted,
+          ...(metal && analysis.kind !== "trial" ? { metal } : {}), ...(outcome ? { check: outcome } : {}),
+        }
       : { profile: tone!, palette: palettes[tone!].colors, reportCredential: pendingReport.current, cameraConsentId: consent, quality, assisted };
     void run(async (signal) => {
       try {
@@ -392,51 +450,57 @@ export function Studio({
           {session && step === "privacy" && (
             <>
               <p>{copy.notice}</p>
-              <label className="inline-option">
-                <input
-                  type="checkbox"
-                  checked={assisted}
-                  onChange={(event) => assist(event.target.checked)}
-                />
-                {copy.assisted}
-              </label>
+              {/* One primary path: camera analysis where it is available, otherwise manual comparison. */}
               <div className="controls">
-                {trialStation && session.station.mode === "manual" && <Button onClick={() => enter(true, true)} disabled={busy}>
-                  {copy.tryAnalysis}
-                </Button>}
-                <Button onClick={() => enter(false)} disabled={busy}>
-                  {copy.manual}
-                </Button>
-                {session.station.preview && <button
-                  className="choice"
-                  onClick={() => enter(true)}
-                  disabled={busy}
-                >
-                  {copy.camera}
-                </button>}
+                {trialStation && session.station.mode === "manual"
+                  ? <Button onClick={() => enter(true, true)} disabled={busy}>{copy.tryAnalysis}</Button>
+                  : <Button onClick={() => enter(false)} disabled={busy}>{copy.manual}</Button>}
+              </div>
+              <div className="secondary-paths">
+                {trialStation && session.station.mode === "manual" &&
+                  <button className="text-button" onClick={() => enter(false)} disabled={busy}>{copy.manual}</button>}
+                {session.station.preview &&
+                  <button className="text-button" onClick={() => enter(true)} disabled={busy}>{copy.camera}</button>}
               </div>
             </>
           )}
           {session && step === "compare" && (
             <>
+              {version && <fieldset className="style-choice">
+                <legend>{copy.styleQuestion}</legend>
+                <div className="choices">
+                  {colorStyles.map((option) => <button key={option} className="choice" aria-pressed={style === option}
+                    onClick={() => setStyle(option)}>{styleLabels[option][lang]}</button>)}
+                </div>
+              </fieldset>}
               {researchReady && <p role="status">{copy.researchReady}</p>}
               {!camera && quality === "unavailable" && <p role="status">
                 {captureFailure === "no_face" ? copy.noFace
+                  : captureFailure === "reference" ? copy.referenceFailed
                   : trial && captureFailure ? copy.trialCaptureHelp : copy.unavailable}
               </p>}
               {!camera && quality === "unavailable" && attempts < 2 && session.station.preview &&
                 <button className="choice" disabled={busy} onClick={() => enter(true, trial)}>{copy.retake}</button>}
-              {camera && cameraStation?.mode !== "manual" ? null : <>
-                {pair ? <>
-                  <p>{copy.drapeStep} {votes.length + 1} / {pairs.length}. {t.choose}</p>
-                  <div className="drape-options">
-                    {pair.map((swatch) => <button key={swatch.id} className="choice drape-option"
-                      onClick={() => compareDrapes(swatch.tone)}>
-                      <span className="drape-sample" style={{ "--drape": swatch.display } as CSSProperties} aria-hidden />
-                      {swatch.label[lang]} <small>{toneLabels[swatch.tone!][lang]}</small>
+              {camera && cameraStation?.mode !== "manual" && !proposal ? null : <>
+                {options ? <>
+                  <p className="drape-progress" aria-live="polite">
+                    <span>{stepLabel} · {copy.drapeStep} {stepIndex + 1} / {totalSteps}</span>
+                    <span className="progress-dots" aria-hidden>
+                      {Array.from({ length: totalSteps }, (_, i) => <i key={i} data-done={i < stepIndex || undefined} />)}
+                    </span>
+                  </p>
+                  {checking && <p>{copy.checkIntro}</p>}
+                  {check === "overruled" && <p role="status">{copy.overruled}</p>}
+                  <p className="drape-question">{question}</p>
+                  {(camera || assisted) && <p className="drape-hint">{copy.lookHint}</p>}
+                  {/* With the camera preview the drapes are overlaid on the video, so the choices stay here. */}
+                  {camera && <div className="drape-options">
+                    {options.map((option) => <button key={option.id} className="choice drape-option"
+                      onClick={() => compareDrapes(option.id)}>
+                      <span className="drape-sample" style={{ "--drape": option.display } as CSSProperties} aria-hidden />
+                      {option.name} {option.note && <small>{option.note}</small>}
                     </button>)}
-                  </div>
-                  <button className="text-button" onClick={() => compareDrapes(null)}>{copy.both}</button>
+                  </div>}
                 </> : <>
                   <p>{t.choose}</p>
                   <div className="choices" aria-label={t.compare}>
@@ -446,26 +510,31 @@ export function Studio({
                     ))}
                   </div>
                 </>}
-                <button className="text-button" aria-pressed={result?.kind === "uncertain"} onClick={() => {
-                  markStarted();
-                  choose(null);
-                  setResult({ kind: "uncertain", reason: quality === "unavailable" ? "capture_unavailable" : "no_clear_match" });
-                }}>{t.uncertain}</button>
+                <div className="secondary-paths">
+                  {options && <button className="text-button" onClick={() => compareDrapes(null)}>{copy.both}</button>}
+                  <button className="text-button" aria-pressed={result?.kind === "uncertain"} onClick={() => {
+                    markStarted();
+                    choose(null);
+                    setResult({ kind: "uncertain", reason: quality === "unavailable" ? "capture_unavailable" : "no_clear_match" });
+                  }}>{t.uncertain}</button>
+                </div>
                 {(result || tone) && <Button onClick={() => reveal()}>{t.select}</Button>}
               </>}
             </>
           )}
           {session && step === "result" && (
             <div className="palette-reveal" ref={resultRef}>
-              <h2>{headingText}</h2>
-              {session.variant === "metals-first" && result?.kind !== "trial" && <Gold locale={locale} />}
-              {named.length ? <NamedPalette swatches={named} locale={locale} />
+              <h2>{styledHeading}</h2>
+              {session.variant === "metals-first" && result?.kind !== "trial" && <Gold locale={locale} suggested={metal ?? undefined} />}
+              {named.length ? <NamedPalette swatches={named} locale={locale}
+                  featured={result?.kind === "trial" ? result.swatchIds : picked} />
                 : <Swatches tone={tone ?? "uncertain"} colors={palettes[tone ?? "uncertain"].colors} locale={locale} />}
+              {result?.kind === "trial" && check === "split" && <p role="status">{copy.split}</p>}
               <p>{result?.kind === "trial" ? copy.trialExplanation
                 : result?.kind === "uncertain" && version ? copy.guidedUnsure
                 : result?.kind === "uncertain" ? copy.unsure : copy.guidance}</p>
               {(session.variant !== "metals-first" || result?.kind === "trial") &&
-                <Gold locale={locale} suggested={result?.kind === "trial" ? result.gold : undefined} />}
+                <Gold locale={locale} suggested={result?.kind === "trial" ? result.gold : metal ?? undefined} />}
               {!qr && <div className="controls">
                 <Button onClick={() => handoff()} disabled={busy}>
                   {busy ? t.waiting : error ? copy.retry : copy.report}
@@ -475,10 +544,14 @@ export function Studio({
             </div>
           )}
           {session && (
-            <div className="controls">
+            <div className="controls session-footer">
               <button className="text-button" onClick={reset}>
                 {t.reset}
               </button>
+              {step === "privacy" && <label className="inline-option">
+                <input type="checkbox" checked={assisted} onChange={(event) => assist(event.target.checked)} />
+                {copy.assisted}
+              </label>}
               <small>{copy.elapsed}</small>
             </div>
           )}
@@ -502,26 +575,38 @@ export function Studio({
         ) : (
           <div className="draping-stage">
             {camera && step === "compare" && session && cameraStation ? (
-              cameraStation.mode === "manual"
-                ? <Camera copy={copy} colors={pair ? pair.map(({ display }) => display) : undefined}
+              cameraStation.mode === "manual" || proposal
+                ? <Camera copy={copy} colors={options?.map(({ display }) => display)}
                     onQuality={reportQuality} onStop={() => {
                       setCamera(false);
                       void visibleEvent(session.credential, "camera_manual_fallback", undefined, session.sessionId);
                     }} />
-                : <StudyCamera station={cameraStation} copy={copy} onFailure={studyFailed}
-                    onTrialResult={(suggestion) => { reveal(suggestion); handoff(false, suggestion); }}
+                : <StudyCamera station={cameraStation} style={style} copy={copy} onFailure={studyFailed}
+                    onTrialResult={(suggestion) => {
+                      // The engine proposes; the comparison confirms or overrules it before it becomes a result.
+                      if (checkDrapes(suggestion, style).length) { setChecks([]); setProposal(suggestion); }
+                      else { reveal(suggestion); handoff(false, suggestion); }
+                    }}
                     onStop={() => setCamera(false)} onResult={(measured) => {
                       setCamera(false);
                       if (measured) reveal(measured);
                       else setResearchReady(true);
                     }} />
+            ) : step === "result" && named.some(({ tone }) => tone !== null) ? (
+              <PaletteArch colors={[
+                ...named.filter(({ id, tone }) => tone !== null && (result?.kind === "trial" || picked.includes(id))),
+                ...named.filter(({ id, tone }) => tone !== null && !(result?.kind === "trial" || picked.includes(id))),
+              ].map(({ display }) => display)} />
+            ) : step === "compare" && session && options ? (
+              <DrapeHero options={options} step={stepIndex + (checking ? 100 : 0)}
+                onChoose={(option) => compareDrapes(option.id)} />
             ) : (
               <figure><Draping tone={tone ?? "neutral"} /></figure>
             )}
           </div>
         )}
       </section>
-      {!session && (
+      {!session && !connected && (
         <details ref={settings}>
           <summary>{t.enroll}</summary>
           <form

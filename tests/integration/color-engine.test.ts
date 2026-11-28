@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, expect, it, vi } from "vitest";
-import { cameraNotice, localCameraTrial } from "@/domains/color-analysis/stations";
+import { cameraNotice, currentStation, localCameraTrial } from "@/domains/color-analysis/stations";
 import { rankTrial } from "@/domains/color-analysis/trial-ranking";
 import { readTrial } from "@/domains/color-analysis/result";
 import { isRegistered, registerTrial, registrationInput } from "@/domains/sessions/registration";
@@ -62,8 +62,7 @@ it("imports a photo, stores AI suggestions for review, and chooses one published
   const consent = await db.consent.create({ data: {
     organizationId: org.id, sessionId: session.sessionId, granted: true, purpose: "local_camera", version: cameraNotice,
   } });
-  const station = localCameraTrial("localhost:3000", "development")!;
-  const result = rankTrial([56, 18, 26], station.calibration!, paletteVersion, {
+  const result = rankTrial([56, 18, 26], paletteVersion, {
     tones: ["pale", "dull"], quality: "stable",
   })!;
   const token = issue("report");
@@ -128,6 +127,24 @@ it("limits the experimental color estimate to localhost in development", () => {
   expect(localCameraTrial("127.0.0.1:3000", "uat")).toBeUndefined();
 });
 
+it("uses a current manual station calibration for the trial and ignores a stale one", () => {
+  const id = randomUUID();
+  const calibration = { revision: "station-20261127-0800", white: [0.95047, 1, 1.08883], matrix: [
+    0.41, 0.36, 0.18, 0, 0.21, 0.72, 0.07, 0, 0.02, 0.12, 0.95, 0] };
+  const entry = { mode: "manual", checkedAt: new Date().toISOString(), camera: { exposureTime: 120 }, whiteReference: true, calibration };
+  vi.stubEnv("COLOR_STATIONS", JSON.stringify({ [id]: entry }));
+  expect(localCameraTrial("localhost:3000", "development", currentStation(id))).toMatchObject({
+    mode: "trial", calibration: { revision: calibration.revision }, camera: { exposureTime: 120 }, reference: { mode: "required" },
+  });
+  vi.stubEnv("COLOR_STATIONS", JSON.stringify({ [id]: { ...entry, checkedAt: new Date(Date.now() - 2 * 86400000).toISOString() } }));
+  expect(currentStation(id)).toBeUndefined();
+  expect(localCameraTrial("localhost:3000", "development", currentStation(id))).toMatchObject({
+    calibration: { revision: "assumed-srgb-d65" }, reference: { mode: "auto" },
+  });
+  vi.stubEnv("COLOR_STATIONS", JSON.stringify({ [id]: { ...entry, mode: "research" } }));
+  expect(localCameraTrial("localhost:3000", "development", currentStation(id))?.calibration?.revision).toBe("assumed-srgb-d65");
+});
+
 it("gates automatic reports and persists immutable manual swatches with duplicate-safe QR recovery", async () => {
   const { org, key, device } = await fixture();
   const session = await startSession(key);
@@ -163,6 +180,68 @@ it("gates automatic reports and persists immutable manual swatches with duplicat
   });
 });
 
+it("stores the chosen color style and accepts only shades from that style", async () => {
+  const { org, key } = await fixture();
+  const session = await startSession(key);
+  await issueReport(session.credential, {
+    result: { kind: "manual", paletteId: "drape-dull", paletteVersion }, style: "masculine", reportCredential: issue("report"),
+  });
+  const saved = await db.colorAnalysis.findFirstOrThrow({ where: { sessionId: session.sessionId } });
+  const ids = (saved.paletteSnapshot as { id: string }[]).map(({ id }) => id);
+  expect(saved.colorStyle).toBe("masculine");
+  expect(ids).toEqual(expect.arrayContaining(["steel-blue", "sage", "khaki", "slate", "charcoal", "navy-gray"]));
+  expect(ids).not.toContain("dusty-rose");
+  expect(reportInput.safeParse({ result: { kind: "uncertain", reason: "no_clear_match" }, style: "unisex" }).success).toBe(false);
+
+  const trialSession = await startSession(key);
+  const scope = { organizationId: org.id, sessionId: trialSession.sessionId };
+  const consent = await db.consent.create({ data: { ...scope, granted: true, purpose: "local_camera", version: cameraNotice } });
+  const station = localCameraTrial("localhost:3000", "development")!;
+  expect(station.paletteVersion).toBe(paletteVersion);
+  const feminine = {
+    kind: "trial" as const, paletteVersion, tones: ["vivid" as const, "dark" as const], quality: "stable" as const,
+    swatchIds: ["fuchsia", "coral-red", "plum-rose"], gold: "rose" as const,
+  };
+  const input = { result: feminine, reportCredential: issue("report"), cameraConsentId: consent.id };
+  await expect(issueReport(trialSession.credential, { ...input, style: "masculine" }, "localhost:3000"))
+    .rejects.toMatchObject({ code: "invalid_palette" });
+  await issueReport(trialSession.credential, { ...input, style: "feminine" }, "localhost:3000");
+  expect(await db.colorAnalysis.findUniqueOrThrow({ where: { organizationId_sessionId: scope } }))
+    .toMatchObject({ colorStyle: "feminine" });
+});
+
+it("stores the comparison's metal and whether it confirmed the camera trial", async () => {
+  const { org, key } = await fixture();
+  const manual = await startSession(key);
+  const result = { kind: "manual" as const, paletteId: "drape-pale", paletteVersion };
+  await issueReport(manual.credential, { result, metal: "white", reportCredential: issue("report") });
+  expect(await db.colorAnalysis.findFirstOrThrow({ where: { sessionId: manual.sessionId } }))
+    .toMatchObject({ metal: "white", engineCheck: null, methodVersion: "manual-drape-v2" });
+  expect(reportInput.safeParse({ result, metal: "rose" }).success).toBe(false);
+  // A confirmation needs the local camera trial.
+  const remote = await startSession(key);
+  await expect(issueReport(remote.credential, { result, check: "overruled", reportCredential: issue("report") }, "kiosk.example.test"))
+    .rejects.toMatchObject({ code: "invalid_engine_check" });
+  const overruled = await startSession(key);
+  await issueReport(overruled.credential, { result, check: "overruled", reportCredential: issue("report") }, "localhost:3000");
+  expect(await db.colorAnalysis.findFirstOrThrow({ where: { sessionId: overruled.sessionId } }))
+    .toMatchObject({ engineCheck: "overruled" });
+
+  const trialSession = await startSession(key);
+  const scope = { organizationId: org.id, sessionId: trialSession.sessionId };
+  const consent = await db.consent.create({ data: { ...scope, granted: true, purpose: "local_camera", version: cameraNotice } });
+  const trial = rankTrial([60, 16, 22], paletteVersion, { tones: ["vivid", "dark"], quality: "stable" })!;
+  const input = { result: trial, reportCredential: issue("report"), cameraConsentId: consent.id };
+  // A trial cannot be "overruled" (that ends in a comparison result) and carries its own metal.
+  await expect(issueReport(trialSession.credential, { ...input, check: "overruled" }, "localhost:3000"))
+    .rejects.toMatchObject({ code: "invalid_engine_check" });
+  await expect(issueReport(trialSession.credential, { ...input, metal: "yellow" }, "localhost:3000"))
+    .rejects.toMatchObject({ code: "invalid_metal" });
+  await issueReport(trialSession.credential, { ...input, check: "confirmed" }, "localhost:3000");
+  expect(await db.colorAnalysis.findUniqueOrThrow({ where: { organizationId_sessionId: scope } }))
+    .toMatchObject({ engineCheck: "confirmed", metal: null });
+});
+
 it("hands off ranked camera colors and requires three-field registration before jewelry discovery", async () => {
   const { org, store, key } = await fixture();
   const session = await startSession(key);
@@ -170,8 +249,7 @@ it("hands off ranked camera colors and requires three-field registration before 
   const consent = await db.consent.create({
     data: { ...scope, granted: true, purpose: "local_camera", version: cameraNotice },
   });
-  const station = localCameraTrial("localhost:3000", "development")!;
-  const result = rankTrial([56, 18, 26], station.calibration!, paletteVersion, {
+  const result = rankTrial([56, 18, 26], paletteVersion, {
     tones: ["pale", "dull"], quality: "stable",
   })!;
   const token = issue("report");

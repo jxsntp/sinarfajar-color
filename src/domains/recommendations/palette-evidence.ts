@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { HttpError } from "@/lib/http";
 import { deltaE00 } from "../color-analysis/delta-e";
-import { hueFamilies, paletteVersion, swatchFor, swatchesFor, tones } from "../color-analysis/swatches";
+import { hueFamilies, paletteFor, paletteVersion, sameSwatch, swatchFor, swatchesFor, tones, type ColorStyle } from "../color-analysis/swatches";
 import { readPalette, readTrial } from "../color-analysis/result";
 import type { Preferences } from "../catalog/input";
 import type { VisibleColor } from "../catalog/visible-colors";
@@ -13,7 +13,7 @@ const context = z.object({
   quality: z.string().nullable(),
   source: z.enum(["manual_drape", "legacy_manual", "validated_auto", "camera_trial", "unavailable"]),
   toneGroups: z.array(z.enum(tones)).max(2),
-  swatches: z.array(z.object({ id: key, evidence: z.enum(["customer_selected", "curated_by_tone"]) })).max(23),
+  swatches: z.array(z.object({ id: key, evidence: z.enum(["customer_selected", "curated_by_tone"]) })).max(64),
   accentFamily: z.enum(hueFamilies).optional(),
   categoryCoverage: z.literal(true).optional(),
 }).strict();
@@ -26,8 +26,9 @@ export function storedPalette(value: unknown): PaletteContext | null {
   const parsed = context.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
-export function availablePalette(version: string) {
-  return (swatchesFor(version) ?? []).filter((swatch) => swatch.status === "approved" || process.env.APP_ENV !== "production");
+export function availablePalette(version: string, style?: ColorStyle | null) {
+  const library = style ? paletteFor(version, [...tones], style) : swatchesFor(version) ?? [];
+  return library.filter((swatch) => swatch.status === "approved" || process.env.APP_ENV !== "production");
 }
 export function resolvePaletteContext(preferences: Preferences, analysis: Analysis | null): PaletteContext | null {
   const record = readPalette(analysis?.paletteSnapshot);
@@ -81,7 +82,7 @@ export function paletteFit(components: VisibleColor[] | undefined, palette: Pale
           (swatch.family === "neutral") !== (item.appearance === "neutral")) continue;
       let similarity = 0;
       let kind = "family";
-      if (item.reference?.id === swatch.id && item.reference.version === palette.version) {
+      if (item.reference && sameSwatch(item.reference, { version: palette.version, id: swatch.id })) {
         similarity = 1;
         kind = "exact";
       } else if (item.measurement && swatch.reference && item.measurement.protocol === swatch.reference.protocol &&

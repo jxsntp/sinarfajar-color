@@ -53,7 +53,10 @@ test("registered kiosk hands off a private mobile report and staff can retrieve 
   const session = (await (await start).json()).data;
   await screen.getByRole("button", { name: "Bandingkan tanpa kamera" }).click();
   await expect(screen.getByRole("button", { name: "Simpan palet" })).toHaveCount(0);
-  for (const name of [/Biru kobalt/, /Hijau pinus/, /Merah anggur/, /Ungu anggrek/, "Keduanya", "Keduanya"]) {
+  // Without the camera or staff, the comparison asks for a preference, not for the effect on the face.
+  await expect(screen.getByText("Tanpa kamera atau bantuan staf, pilih warna yang lebih ingin Anda kenakan.")).toBeVisible();
+  await expect(screen.getByText(/Hangat atau sejuk · Perbandingan 1 \/ 7/)).toBeVisible();
+  for (const name of ["Keduanya", /Hijau pinus/, /Merah anggur/, /Biru kobalt/, /Ungu anggrek/, "Keduanya", "Keduanya"]) {
     await screen.getByRole("button", { name }).click();
   }
   await expect(screen.getByRole("heading", { name: /Dua kelompok warna/ })).toBeVisible();

@@ -96,3 +96,7 @@ Use approved store-month IDR inputs. Gross profit is sourced from finance. Month
 The collector reports a rolling 24-hour window. QR issued counts report-token records. QR displayed and human handoff count separate sessions with the corresponding accepted events. Discovery activation counts sessions with explicit accepted requests. CTR divides accepted deduplicated product clicks by accepted product impressions. No valid denominator returns null. The short-window health metrics and cohort/experiment reporting use different windows. Erasure and retention can remove customer-level events and reduce historical completeness.
 
 Measure store-hour availability with external ready probes in the store timezone. Divide successful scheduled probes by expected probes during operating hours and review absent probes as monitoring gaps. The pilot goal is at least 99.5%. Provider p95 covers completed OpenRouter runs and should be read alongside failures, fallbacks and interrupted runs. Expose reported costs and the reserved-or-actual spend separately. Compare dashboard attribution to transaction linkage coverage and use a valid comparison before claiming incremental impact.
+
+## Color style mix
+
+Count saved `ColorAnalysis` rows by `colorStyle` (`both`, `feminine`, `masculine`) for reports issued in the period. Report legacy rows with a null style separately. The style is a customer-chosen preference. Use it to read palette and recommendation outcomes by chosen style, never as a demographic measure.

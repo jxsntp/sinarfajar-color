@@ -11,7 +11,7 @@ import { db } from "@/lib/db";
 import { readResult } from "@/domains/recommendations/discovery";
 import { DiscoveryForm } from "./discovery-form";
 import { availablePalette, storedPalette } from "@/domains/recommendations/palette-evidence";
-import { paletteSnapshot, paletteVersion } from "@/domains/color-analysis/swatches";
+import { colorStyles, paletteSnapshot, paletteVersion } from "@/domains/color-analysis/swatches";
 export default async function Discover({
   params,
 }: {
@@ -31,14 +31,15 @@ export default async function Discover({
     }),
     db.colorAnalysis.findUnique({
       where: { organizationId_sessionId: { organizationId: session.organizationId, sessionId: session.id } },
-      select: { paletteVersion: true, paletteSnapshot: true },
+      select: { paletteVersion: true, paletteSnapshot: true, colorStyle: true },
     }),
   ]);
   const trial = readTrial(analysis?.paletteSnapshot);
   if (trial && env().APP_ENV !== "development") notFound();
   const trialRegistered = trial ? await isRegistered(session) : undefined;
   const version = analysis?.paletteVersion ?? paletteVersion;
-  const shades = paletteSnapshot(availablePalette(version));
+  const style = colorStyles.find((item) => item === analysis?.colorStyle);
+  const shades = paletteSnapshot(availablePalette(version, style));
   const text = mobileText(brand.locale);
   const canReuse = !trial || (trialRegistered && storedPalette(run?.colorContext)?.categoryCoverage);
   return (

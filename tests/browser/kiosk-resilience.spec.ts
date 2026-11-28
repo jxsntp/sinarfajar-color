@@ -44,6 +44,8 @@ test("a failed handoff leaves the local result, retries safely and resets an uns
   });
   await page.clock.install();
   await page.goto("/kiosk");
+  await expect(page.getByRole("link", { name: "Masuk staf" })).toHaveCount(0);
+  await expect(page.getByText("Hubungkan perangkat")).toHaveCount(0);
   const started = page.waitForResponse((response) =>
     response.url().endsWith("/api/kiosk/sessions"),
   );
@@ -58,10 +60,20 @@ test("a failed handoff leaves the local result, retries safely and resets an uns
     .toBe(640);
   await page.getByRole("button", { name: "Periksa pencahayaan" }).click();
   await expect(page.getByText("Cahaya cukup")).toBeVisible();
-  for (const name of [/Biru kobalt/, /Hijau mint/, /Mawar lembut/, /Ungu anggrek/, /Kuning krem/, /Merah karmin/]) {
+  await expect(page.getByRole("button", { name: "Semua gaya" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Feminin" }).click();
+  // With the preview on, the customer can see the effect, so the analyst's question is asked.
+  await expect(page.getByText("Mana yang membuat kulit tampak lebih rata dan bayangan di bawah mata lebih lembut?")).toBeVisible();
+  // Metal, then light against deep, clear against soft, and the two leaders against each other.
+  for (const name of [/Emas kuning/, /Hijau mint/, /Merah muda kerang/, /Biru kobalt/, /Ungu anggrek/, /Kuning marigold/, /Merah karmin/]) {
     await page.getByRole("button", { name }).click();
   }
-  await expect(page.getByRole("heading", { name: /Palet pilihan Anda/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Palet pilihan Anda · Cerah · Feminin/ })).toBeVisible();
+  await expect(page.getByText("Merah muda fuchsia")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pilihan Anda", exact: true })).toBeVisible();
+  await expect(page.locator(".labeled-swatches.featured")).toContainText("Ungu anggrek");
+  await expect(page.getByText("Biru kobalt")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Warna emas untuk dicoba" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute(
     "data-camera-stopped",
     "true",
@@ -99,7 +111,9 @@ test("a failed handoff leaves the local result, retries safely and resets an uns
   const savedReport = page.waitForResponse((response) =>
     new URL(response.url()).pathname === "/api/kiosk/report" && response.ok());
   await page.getByRole("button", { name: "Coba lagi" }).click();
-  const { reportUrl } = (await (await savedReport).json()).data;
+  const saved = await savedReport;
+  expect(saved.request().postDataJSON()).toMatchObject({ style: "feminine" });
+  const { reportUrl } = (await saved.json()).data;
   await expect(testLink).toHaveAttribute("href", reportUrl);
   await expect(
     page.getByRole("img", { name: "Pindai untuk membuka laporan" }),

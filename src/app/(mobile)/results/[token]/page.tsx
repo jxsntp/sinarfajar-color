@@ -5,7 +5,7 @@ import { brandFor, messages } from "@/domains/organizations/branding";
 import { experience, isTone } from "@/domains/sessions/palette";
 import { Gold, NamedPalette, Swatches } from "@/components/palette";
 import { readPalette, readTrial } from "@/domains/color-analysis/result";
-import { toneLabels, tones } from "@/domains/color-analysis/swatches";
+import { colorStyles, styleLabels, toneLabels, tones } from "@/domains/color-analysis/swatches";
 import { ReportOpen } from "./report-open";
 import { PrivacyControls } from "./privacy-controls";
 import { ReportTools } from "./report-tools";
@@ -42,14 +42,16 @@ export default async function Report({
     ? (analysis.uncertain ? copy.mixed : analysis.source === "AUTOMATIC" ? copy.automatic : copy.own)
       + " · " + groups.map((group) => toneLabels[group][lang]).join(" / ")
     : tone === "uncertain" ? t.uncertain : copy.own + " · " + t[tone];
+  const style = colorStyles.find((item) => item === analysis.colorStyle && item !== "both");
   return (
     <div className="mobile-report">
       <h1>{t.result}</h1>
-      <h2>{heading}</h2>
+      <h2>{style ? heading + " · " + styleLabels[style][lang] : heading}</h2>
       {swatches.length ? <NamedPalette swatches={swatches} locale={brand.locale} />
         : <Swatches tone={tone} colors={analysis.palette} locale={brand.locale} />}
       <p>{trial ? copy.trialExplanation : tone === "uncertain" && !groups.length && !analysis.paletteVersion ? copy.unsure : copy.guidance}</p>
-      <Gold locale={brand.locale} suggested={trial?.gold} />
+      {/* The camera trial's metal, or the one chosen in the comparison's gold-against-silver step. */}
+      <Gold locale={brand.locale} suggested={trial?.gold ?? (analysis.metal === "yellow" || analysis.metal === "white" ? analysis.metal : undefined)} />
       <Link
         className="action mobile-action"
         prefetch={false}

@@ -42,7 +42,7 @@ The following example is the normalized context assembled inside the mobile serv
   "color": {
     "source": "manual_drape",
     "quality": "stable",
-    "methodVersion": "manual-drape-v1",
+    "methodVersion": "manual-drape-v2",
     "paletteVersion": "sf-drapes-v1",
     "toneGroups": ["dull"],
     "swatches": [{ "id": "steel-blue", "evidence": "customer_selected" }]
